@@ -1,0 +1,370 @@
+# Implementation Plan: Wallet Key Management System
+
+## Overview
+
+This implementation plan breaks down the wallet key management system into discrete, incremental coding tasks. The system will be built following clean architecture principles with four layers: core (cryptographic primitives), domain (business logic), data (storage), and presentation (UI state management). Each task builds on previous work, with testing integrated throughout to catch errors early.
+
+The implementation uses Dart/Flutter with the following key packages:
+
+- `pointycastle` for cryptographic operations (AES, PBKDF2, secp256k1)
+- `flutter_secure_storage` for secure platform storage
+- `get` for state management
+- `hex` for encoding/decoding
+
+## Tasks
+
+- [x]   1. Set up project structure and dependencies
+    - Create clean architecture folder structure: lib/core, lib/domain, lib/data, lib/presentation
+    - Add required dependencies to pubspec.yaml (pointycastle, flutter_secure_storage, get, hex)
+    - Create barrel files for exports
+    - Set up test directory structure mirroring lib structure
+    - _Requirements: 10.1, 10.4_
+
+- [x]   2. Implement core cryptographic utilities
+    - [x] 2.1 Implement secure memory utilities
+        - Create SecureMemory class with methods to clear Uint8List and String data
+        - Implement withSecureData helper for automatic cleanup
+        - _Requirements: 8.5_
+    - [x] 2.2 Implement BIP39 word list
+        - Create constant containing all 2048 BIP39 English words
+        - Implement word lookup by index and index lookup by word
+        - _Requirements: 13.4_
+    - [ ]\* 2.3 Write property test for BIP39 word list
+        - **Property 1: BIP39 Standard Compliance (word list portion)**
+        - Verify word list matches official BIP39 specification
+        - **Validates: Requirements 13.4**
+    - [x] 2.4 Implement BIP39 mnemonic generation
+        - Implement generateMnemonic() using Random.secure() for 256-bit entropy
+        - Implement checksum calculation using SHA-256
+        - Convert entropy + checksum to 24-word mnemonic
+        - _Requirements: 1.1, 1.2, 1.3, 1.4_
+    - [ ]\* 2.5 Write property tests for mnemonic generation
+        - **Property 1: BIP39 Standard Compliance**
+        - **Property 2: Entropy Randomness Quality**
+        - Test that all generated mnemonics are 24 words and pass validation
+        - Test statistical randomness of generated entropy
+        - **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 13.1, 13.5**
+    - [x] 2.6 Implement BIP39 mnemonic validation
+        - Implement validateMnemonic() checking word count, word list membership, and checksum
+        - Implement normalizeMnemonic() for lowercase and whitespace normalization
+        - _Requirements: 2.2, 2.4_
+    - [ ]\* 2.7 Write property tests for mnemonic validation
+        - **Property 3: Mnemonic Word Count Validation**
+        - **Property 4: Mnemonic Normalization Consistency**
+        - Test validation accepts valid mnemonics and rejects invalid ones
+        - Test normalization produces consistent output
+        - **Validates: Requirements 2.1, 2.2, 2.4**
+    - [x] 2.8 Implement BIP39 seed derivation
+        - Implement mnemonicToSeed() using PBKDF2-HMAC-SHA512 with 2048 iterations
+        - Use salt "mnemonic" + passphrase (empty string for this implementation)
+        - _Requirements: 5.1_
+
+- [x]   3. Implement BIP32/BIP44 key derivation
+    - [x] 3.1 Implement BIP32 master key derivation
+        - Implement deriveMasterKey() using HMAC-SHA512 with key "Bitcoin seed"
+        - Split result into private key (32 bytes) and chain code (32 bytes)
+        - Create ExtendedKey class to hold key data
+        - _Requirements: 5.2_
+    - [x] 3.2 Implement BIP32 child key derivation
+        - Implement hardened child derivation (index >= 2^31)
+        - Implement deriveKey() following BIP32 specification
+        - Parse and validate derivation path format (m/44'/60'/0'/0/0)
+        - _Requirements: 5.2, 5.3_
+    - [x] 3.3 Implement secp256k1 public key derivation
+        - Use pointycastle to derive public key from private key
+        - Implement derivePublicKey() using secp256k1 curve
+        - _Requirements: 5.6_
+    - [x] 3.4 Implement Ethereum address derivation
+        - Implement Keccak-256 hashing of public key
+        - Take last 20 bytes and format as 0x-prefixed hex string
+        - Implement deriveAddress() method
+        - _Requirements: 5.6_
+    - [ ]\* 3.5 Write property tests for key derivation
+        - **Property 16: BIP32/BIP44 Key Derivation Compliance**
+        - **Property 17: Public Key and Address Derivation**
+        - Test against known BIP32/BIP44 test vectors
+        - Test that derived addresses match reference implementations
+        - **Validates: Requirements 5.1, 5.2, 5.3, 5.6, 13.2, 13.3, 13.6**
+
+- [x]   4. Implement encryption service
+    - [x] 4.1 Implement random generation utilities
+        - Implement generateSalt() for 32-byte cryptographically secure salt
+        - Implement generateIV() for 16-byte IV (or 12-byte for GCM)
+        - Use Random.secure() for generation
+        - _Requirements: 3.2_
+    - [x] 4.2 Implement PBKDF2 key derivation
+        - Implement deriveKeyFromPin() using PBKDF2 with SHA-256
+        - Use 100,000 iterations minimum
+        - Output 32-byte key for AES-256
+        - _Requirements: 3.3, 3.4_
+    - [ ]\* 4.3 Write property test for PBKDF2
+        - **Property 8: PBKDF2 Parameter Compliance**
+        - Test that key derivation uses correct parameters
+        - **Validates: Requirements 3.3, 3.4**
+    - [x] 4.4 Implement AES-256-GCM encryption
+        - Implement encrypt() using pointycastle AES-256-GCM
+        - Generate unique IV for each encryption
+        - Return EncryptedData with ciphertext, IV, and auth tag
+        - _Requirements: 3.5, 3.6, 3.7_
+    - [x] 4.5 Implement AES-256-GCM decryption
+        - Implement decrypt() using pointycastle AES-256-GCM
+        - Verify authentication tag
+        - Return plaintext or throw error on failure
+        - _Requirements: 6.3_
+    - [ ]\* 4.6 Write property tests for encryption
+        - **Property 7: Encryption Metadata Completeness**
+        - **Property 9: AES-256 Encryption Algorithm**
+        - **Property 10: Encryption Round-Trip Integrity**
+        - **Property 11: Wrong PIN Rejection**
+        - Test encryption produces complete metadata
+        - Test round-trip encrypt/decrypt preserves data
+        - Test wrong key fails decryption
+        - **Validates: Requirements 3.2, 3.5, 3.6, 3.7, 6.2, 6.3, 6.4**
+
+- [x]   5. Checkpoint - Ensure core cryptography tests pass
+    - Ensure all tests pass, ask the user if questions arise.
+
+- [x]   6. Implement data layer - secure storage
+    - [x] 6.1 Create storage data models
+        - Create EncryptedWalletData model with JSON serialization
+        - Include fields: encryptedMnemonic, iv, salt, authTag, address, createdAt
+        - Implement toJson() and fromJson() with base64 encoding for byte arrays
+        - _Requirements: 4.3_
+    - [x] 6.2 Implement SecureStorageDataSource
+        - Wrap flutter_secure_storage with error handling
+        - Implement write(), read(), delete(), and containsKey() methods
+        - Use storage keys: "wallet_data" for all wallet data (stored as JSON)
+        - _Requirements: 4.1, 4.2_
+    - [x] 6.3 Implement WalletRepositoryImpl - storage operations
+        - Implement storeEncryptedWallet() to save EncryptedWalletData
+        - Implement getEncryptedWallet() to retrieve wallet data
+        - Implement hasWallet() to check existence
+        - Implement deleteWallet() to remove all data
+        - _Requirements: 4.3, 4.5, 7.1_
+    - [ ]\* 6.4 Write property tests for storage
+        - **Property 12: Storage Structure Separation**
+        - **Property 13: Storage Security Constraints**
+        - **Property 14: Wallet Deletion Completeness**
+        - **Property 20: Wallet Existence Detection**
+        - Test that storage never contains plaintext sensitive data
+        - Test that deletion removes all data
+        - Test that existence check is accurate
+        - **Validates: Requirements 4.3, 4.4, 4.5, 7.1, 7.5, 8.1, 8.2**
+    - [ ]\* 6.5 Write unit tests for storage error handling
+        - Test storage failure scenarios
+        - Test data corruption detection
+        - Test atomic operation behavior
+        - _Requirements: 4.6, 9.3, 9.4_
+
+- [x]   7. Implement domain layer - entities and errors
+    - [x] 7.1 Create domain entities
+        - Create Wallet entity with address, privateKey, isLocked fields
+        - Create WalletCredentials entity for temporary mnemonic storage
+        - Create WalletState enum (notCreated, locked, unlocked)
+        - _Requirements: 7.5_
+    - [x] 7.2 Create error types
+        - Create WalletErrorType enum with all error categories
+        - Create WalletError exception class with type, message, and details
+        - Ensure error messages never contain sensitive data
+        - _Requirements: 9.1, 9.2, 9.5_
+    - [ ]\* 7.3 Write property test for error security
+        - **Property 22: Error Information Security**
+        - **Property 24: Error Message Descriptiveness**
+        - Test that errors don't contain sensitive data
+        - Test that errors are descriptive
+        - **Validates: Requirements 8.6, 9.1, 9.2**
+    - [x] 7.4 Create repository interfaces
+        - Create abstract WalletRepository interface
+        - Create abstract SecureStorageRepository interface
+        - Define all methods with clear contracts
+        - _Requirements: 10.4_
+
+- [x]   8. Implement domain layer - use cases
+    - [x] 8.1 Implement CreateWalletUseCase
+        - Check if wallet already exists (enforce single wallet constraint)
+        - Generate new mnemonic using BIP39 service
+        - Derive wallet address from mnemonic
+        - Return mnemonic and address (encryption happens after user confirms backup)
+        - _Requirements: 1.1, 7.2, 11.1_
+    - [ ]\* 8.2 Write property test for wallet creation constraint
+        - **Property 21: Single Wallet Creation Constraint**
+        - Test that creation fails when wallet exists
+        - **Validates: Requirements 7.2, 7.3**
+    - [x] 8.3 Implement SaveWalletUseCase
+        - Accept mnemonic, PIN, and address
+        - Validate PIN format (4-8 digits)
+        - Derive encryption key from PIN using PBKDF2
+        - Encrypt mnemonic using AES-256-GCM
+        - Store encrypted wallet data
+        - Clear sensitive data from memory
+        - _Requirements: 3.1, 11.3_
+    - [ ]\* 8.4 Write property test for PIN validation
+        - **Property 6: PIN Format Validation**
+        - Test PIN acceptance/rejection based on format
+        - **Validates: Requirements 3.1**
+    - [x] 8.5 Implement ImportWalletUseCase
+        - Check if wallet already exists (enforce single wallet constraint)
+        - Validate imported mnemonic (word count, word list, checksum)
+        - Normalize mnemonic
+        - Derive wallet address
+        - Return normalized mnemonic and address for confirmation
+        - _Requirements: 2.1, 2.2, 2.3, 2.4, 7.3_
+    - [ ]\* 8.6 Write property test for import validation
+        - **Property 5: Import Rejection on Invalid Mnemonic**
+        - Test that invalid mnemonics are rejected without storage
+        - **Validates: Requirements 2.3**
+    - [x] 8.7 Implement UnlockWalletUseCase
+        - Retrieve encrypted wallet data from storage
+        - Derive decryption key from PIN using same PBKDF2 parameters
+        - Decrypt mnemonic
+        - Validate decrypted mnemonic
+        - Derive private key and address
+        - Return Wallet entity with private key (held in memory for session)
+        - Clear mnemonic from memory after deriving key
+        - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+    - [ ]\* 8.8 Write property tests for authentication
+        - **Property 18: Authentication Data Retrieval**
+        - **Property 19: Session Private Key Availability**
+        - Test that unlock retrieves all required data
+        - Test that successful auth provides private key
+        - **Validates: Requirements 6.1, 6.5**
+    - [ ]\* 8.9 Write unit test for constant-time PIN comparison
+        - **Property 23: Constant-Time PIN Comparison**
+        - Test that authentication timing doesn't vary with wrong PINs
+        - **Validates: Requirements 8.7**
+    - [x] 8.10 Implement GetWalletAddressUseCase
+        - Retrieve wallet data from storage
+        - Return cached address without decryption
+        - _Requirements: 7.1_
+    - [x] 8.11 Implement DeleteWalletUseCase
+        - Delete all wallet data from storage
+        - Verify deletion completed successfully
+        - _Requirements: 4.5, 7.4_
+    - [x] 8.12 Implement ExportMnemonicUseCase
+        - Require authentication (PIN) before export
+        - Retrieve and decrypt mnemonic
+        - Return mnemonic for display
+        - Clear mnemonic from memory after use
+        - _Requirements: 11.4, 12.5_
+    - [ ]\* 8.13 Write property test for export authentication
+        - **Property 29: Mnemonic Export Authentication**
+        - Test that export requires authentication
+        - **Validates: Requirements 11.4, 12.5**
+    - [x] 8.14 Implement VerifyBackupUseCase
+        - Require authentication (PIN) before verification
+        - Retrieve and decrypt stored mnemonic
+        - Normalize entered mnemonic
+        - Compare entered with stored mnemonic
+        - Return success or failure
+        - _Requirements: 12.2, 12.3, 12.4, 12.5_
+    - [ ]\* 8.15 Write property test for backup verification
+        - **Property 30: Mnemonic Verification Correctness**
+        - Test that verification correctly identifies matches and mismatches
+        - **Validates: Requirements 12.2, 12.3, 12.4**
+
+- [x]   9. Checkpoint - Ensure domain layer tests pass
+    - Ensure all tests pass, ask the user if questions arise.
+
+- [x]   10. Implement presentation layer - GetX controllers
+    - [x] 10.1 Implement WalletController
+        - Manage global wallet state (notCreated, locked, unlocked)
+        - Provide wallet address observable
+        - Provide wallet existence check
+        - Initialize on app start
+        - _Requirements: 7.5, 10.6_
+    - [x] 10.2 Implement WalletCreationController
+        - Orchestrate wallet creation flow
+        - Call CreateWalletUseCase to generate mnemonic
+        - Display mnemonic to user with numbering (1-24)
+        - After user confirms backup, call SaveWalletUseCase
+        - Handle errors and display user-friendly messages
+        - Update WalletController state
+        - _Requirements: 11.1, 11.2, 11.3_
+    - [ ]\* 10.3 Write unit test for mnemonic display format
+        - **Property 27: Mnemonic Display Format**
+        - Test that display includes all 24 words with numbering
+        - **Validates: Requirements 11.2**
+    - [x] 10.4 Implement WalletImportController
+        - Orchestrate wallet import flow
+        - Accept user input (24 words)
+        - Call ImportWalletUseCase to validate and normalize
+        - Display derived address for confirmation
+        - After user confirms, call SaveWalletUseCase
+        - Handle errors with specific messages (invalid length, invalid words, invalid checksum)
+        - Update WalletController state
+        - _Requirements: 2.1, 2.2, 2.3, 2.4_
+    - [x] 10.5 Implement WalletUnlockController
+        - Accept PIN input
+        - Call UnlockWalletUseCase
+        - Update WalletController state to unlocked
+        - Handle authentication errors (wrong PIN, corrupted data, storage failure)
+        - Distinguish error types for user feedback
+        - _Requirements: 6.1, 6.2, 6.3, 6.4, 9.5_
+    - [x] 10.6 Implement WalletSettingsController
+        - Provide mnemonic export functionality (calls ExportMnemonicUseCase)
+        - Provide backup verification functionality (calls VerifyBackupUseCase)
+        - Provide wallet deletion functionality (calls DeleteWalletUseCase)
+        - Require PIN authentication for sensitive operations
+        - _Requirements: 11.4, 12.1, 12.2, 12.3, 12.4, 12.5, 7.4_
+    - [ ]\* 10.7 Write integration tests for controllers
+        - Test complete flows: create, import, unlock, export, verify, delete
+        - Test error handling across all flows
+        - Use mock repositories for isolation
+        - _Requirements: All_
+
+- [x]   11. Implement dependency injection setup
+    - [x] 11.1 Create service locator or GetX bindings
+        - Register all services, repositories, and use cases
+        - Use factory pattern for use cases (new instance per call)
+        - Use singleton pattern for repositories and services
+        - Ensure proper dependency injection for testability
+        - _Requirements: 10.3, 10.4_
+    - [x] 11.2 Create initialization logic
+        - Initialize flutter_secure_storage
+        - Initialize WalletController
+        - Check wallet existence on app start
+        - Set initial wallet state
+        - _Requirements: 7.1, 7.5_
+
+- [x]   12. Final integration and testing
+    - [ ]\* 12.1 Write end-to-end integration tests
+        - Test complete wallet lifecycle: create → lock → unlock → export → delete
+        - Test import flow: import → lock → unlock → verify backup
+        - Test error scenarios: wrong PIN, corrupted data, storage failures
+        - Test single wallet constraint enforcement
+        - Use real flutter_secure_storage (not mocked)
+        - _Requirements: All_
+    - [ ]\* 12.2 Write security tests
+        - **Property 13: Storage Security Constraints**
+        - **Property 25: Storage Failure Recovery**
+        - **Property 26: Corruption Detection**
+        - Test that sensitive data is never in storage (plaintext)
+        - Test that errors don't leak sensitive information
+        - Test corruption detection
+        - Test storage failure recovery
+        - **Validates: Requirements 4.4, 8.1, 8.2, 8.6, 9.3, 9.4**
+    - [ ]\* 12.3 Run all property tests with 100+ iterations
+        - Verify all 30 correctness properties pass
+        - Run with increased iteration count for confidence
+        - Document any failures for investigation
+        - _Requirements: All_
+
+- [x]   13. Final checkpoint - Complete system verification
+    - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation at logical breaks
+- Property tests validate universal correctness properties (minimum 100 iterations each)
+- Unit tests validate specific examples, edge cases, and error conditions
+- Integration tests validate complete flows and component interactions
+- The implementation follows clean architecture: core → domain → data → presentation
+- All cryptographic operations are in the core layer (no Flutter dependencies)
+- All business logic is in the domain layer (use cases)
+- All storage operations are in the data layer (repositories)
+- All UI state management is in the presentation layer (GetX controllers)
+- Sensitive data (mnemonic, private key) is cleared from memory after use
+- Each property test must reference its design document property number
+- Tag format for property tests: `@Tags(['feature:wallet-key-management', 'property:N'])`

@@ -1,0 +1,335 @@
+import 'package:get/get.dart';
+import '../../domain/usecases/create_new_wallet_usecase.dart';
+import '../../domain/usecases/get_current_address_usecase.dart';
+import '../../../../core/vault/vault_exception.dart';
+
+/// Wallet Controller
+/// 
+/// PRESENTATION LAYER - GetX Controller
+/// 
+/// Responsibilities:
+/// - Expose reactive state for UI
+/// - Coordinate wallet operations via use cases
+/// - Manage wallet lifecycle (create, import, backup)
+/// - Provide wallet information (address, balance)
+/// 
+/// SEPARATION OF CONCERNS:
+/// - NO crypto logic (delegated to domain/crypto layer)
+/// - NO mnemonic storage (retrieved only during operations)
+/// - NO private key storage (derived at runtime only)
+/// - Calls use cases for business logic
+/// - UI observes reactive state (Rx)
+/// 
+/// Security Principles:
+/// - Address is public info (safe to cache)
+/// - Balance is public info (safe to cache)
+/// - Mnemonic NEVER stored in controller
+/// - Private keys NEVER stored in controller
+/// - All sensitive operations via use cases
+/// 
+/// Usage:
+/// ```dart
+/// final controller = Get.find<WalletController>();
+/// 
+/// // Create wallet
+/// final result = await controller.createWallet(pin);
+/// if (result != null) {
+///   // Navigate to backup with mnemonic
+///   NavigationHelper.navigateToBackup(mnemonic: result.mnemonic);
+/// }
+/// 
+/// // Get address (reactive)
+/// Obx(() => Text(controller.currentAddress.value));
+/// 
+/// // Get balance (reactive)
+/// Obx(() => Text(controller.balance.value));
+/// ```
+class WalletController extends GetxController {
+  // Use cases (injected via dependency injection)
+  final CreateNewWalletUseCase? _createNewWalletUseCase;
+  final GetCurrentAddressUseCase? _getCurrentAddressUseCase;
+  // TODO: Inject other use cases
+  // final ImportWalletUseCase _importWalletUseCase;
+  // final GetBalanceUseCase _getBalanceUseCase;
+
+  WalletController({
+    CreateNewWalletUseCase? createNewWalletUseCase,
+    GetCurrentAddressUseCase? getCurrentAddressUseCase,
+  })  : _createNewWalletUseCase = createNewWalletUseCase,
+        _getCurrentAddressUseCase = getCurrentAddressUseCase;
+
+  // ============================================================================
+  // REACTIVE STATE (Observable by UI)
+  // ============================================================================
+
+  /// Current wallet address (public info, safe to cache)
+  /// 
+  /// SECURITY: Address is public information
+  /// - Safe to display in UI
+  /// - Safe to cache in memory
+  /// - No sensitive data
+  final RxString _currentAddress = ''.obs;
+
+  /// Wallet balance in ETH
+  final RxString _balance = '0.0'.obs;
+
+  /// USD value of balance
+  final RxString _balanceUsd = '0.00'.obs;
+
+  /// Loading state
+  final RxBool _isLoading = false.obs;
+
+  /// Error message
+  final RxnString _errorMessage = RxnString();
+
+  /// Wallet exists flag
+  final RxBool _hasWallet = false.obs;
+
+  // ============================================================================
+  // GETTERS (UI reads these)
+  // ============================================================================
+
+  /// Current wallet address (reactive)
+  /// 
+  /// UI can observe this with Obx:
+  /// ```dart
+  /// Obx(() => Text(controller.currentAddress.value))
+  /// ```
+  RxString get currentAddress => _currentAddress;
+
+  String get balance => _balance.value;
+  String get balanceUsd => _balanceUsd.value;
+  bool get isLoading => _isLoading.value;
+  String? get errorMessage => _errorMessage.value;
+  bool get hasWallet => _hasWallet.value;
+
+  // Legacy getter for backward compatibility
+  String? get address => _currentAddress.value.isEmpty ? null : _currentAddress.value;
+
+  // ============================================================================
+  // LIFECYCLE
+  // ============================================================================
+
+  @override
+  void onInit() {
+    super.onInit();
+    _initializeWallet();
+  }
+
+  /// Initialize wallet state on app start
+  /// 
+  /// SEPARATION OF CONCERNS:
+  /// - Calls use case to check wallet existence
+  /// - Calls use case to get cached address
+  /// - NO crypto logic here
+  /// 
+  /// SECURITY:
+  /// - Only retrieves cached address (public info)
+  /// - No mnemonic access
+  /// - No private key derivation
+  Future<void> _initializeWallet() async {
+    _isLoading.value = true;
+    _errorMessage.value = null;
+
+    try {
+      // Check if wallet exists
+      if (_getCurrentAddressUseCase != null) {
+        try {
+          // Get current address from vault
+          final address = await _getCurrentAddressUseCase.call();
+          _currentAddress.value = address;
+          _hasWallet.value = true;
+
+          // Load balance
+          await refreshBalance();
+        } on VaultException catch (e) {
+          if (e.type == VaultExceptionType.vaultEmpty) {
+            // No wallet exists
+            _hasWallet.value = false;
+            _currentAddress.value = '';
+          } else {
+            throw e;
+          }
+        }
+      } else {
+        // Fallback: Use case not injected (placeholder mode)
+        _hasWallet.value = false;
+        _currentAddress.value = '';
+      }
+    } catch (e) {
+      _errorMessage.value = 'Failed to initialize wallet';
+      _hasWallet.value = false;
+      _currentAddress.value = '';
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  // ============================================================================
+  // WALLET OPERATIONS (Call use cases, NO crypto logic)
+  // ============================================================================
+
+  /// Create new wallet
+  /// 
+  /// SEPARATION OF CONCERNS:
+  /// - Calls CreateNewWalletUseCase (domain layer)
+  /// - Use case handles mnemonic generation via WalletEngine
+  /// - Use case handles encryption via SecureVault
+  /// - Use case handles storage
+  /// - Controller only manages UI state
+  /// 
+  /// Parameters:
+  /// - pin: User's PIN for encryption (6-8 digits recommended)
+  /// 
+  /// Returns: CreateNewWalletResult with mnemonic and address (for backup screen)
+  ///          null if creation failed
+  /// 
+  /// SECURITY:
+  /// - Mnemonic returned ONLY for immediate backup
+  /// - Caller must clear mnemonic after backup
+  /// - Mnemonic NOT stored in controller
+  /// - PIN validated by use case
+  /// 
+  /// Error Handling:
+  /// - VaultException.vaultNotEmpty: Wallet already exists
+  /// - VaultException.invalidPin: PIN format invalid
+  /// - VaultException.encryptionFailed: Encryption failed
+  /// - VaultException.storageFailed: Storage failed
+  Future<CreateNewWalletResult?> createWallet(String pin) async {
+    _isLoading.value = true;
+    _errorMessage.value = null;
+
+    try {
+      // Call use case to create wallet
+      if (_createNewWalletUseCase != null) {
+        final result = await _createNewWalletUseCase.call(pin: pin);
+
+        // Update controller state
+        _currentAddress.value = result.address;
+        _hasWallet.value = true;
+
+        // Return result for backup screen
+        return result;
+      } else {
+        // Fallback: Use case not injected (placeholder mode)
+        await Future.delayed(const Duration(seconds: 1));
+        _currentAddress.value = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
+        _hasWallet.value = true;
+
+        // Return placeholder result
+        return CreateNewWalletResult(
+          mnemonic:
+              'abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual',
+          address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+        );
+      }
+    } on VaultException catch (e) {
+      // Handle vault-specific errors
+      switch (e.type) {
+        case VaultExceptionType.vaultNotEmpty:
+          _errorMessage.value = 'Wallet already exists on this device';
+          break;
+        case VaultExceptionType.invalidPin:
+          _errorMessage.value = 'Invalid PIN format. Use 6-8 digits';
+          break;
+        case VaultExceptionType.encryptionFailed:
+          _errorMessage.value = 'Failed to encrypt wallet';
+          break;
+        case VaultExceptionType.storageFailed:
+          _errorMessage.value = 'Failed to save wallet';
+          break;
+        default:
+          _errorMessage.value = 'Failed to create wallet: ${e.message}';
+      }
+      return null;
+    } catch (e) {
+      // Handle unexpected errors
+      _errorMessage.value = 'Failed to create wallet: ${e.toString()}';
+      return null;
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// Import existing wallet
+  /// 
+  /// SEPARATION OF CONCERNS:
+  /// - Calls ImportWalletUseCase (domain layer)
+  /// - Use case validates mnemonic
+  /// - Use case derives address
+  /// - Use case encrypts and stores
+  /// - Controller only manages UI state
+  /// 
+  /// Parameters:
+  /// - mnemonic: 24-word recovery phrase
+  /// - pin: User's PIN for encryption
+  Future<bool> importWallet(String mnemonic, String pin) async {
+    _isLoading.value = true;
+    _errorMessage.value = null;
+
+    try {
+      // TODO: Call use case
+      // final address = await _importWalletUseCase(mnemonic, pin);
+      // _address.value = address;
+      // _hasWallet.value = true;
+      // return true;
+
+      // Placeholder
+      await Future.delayed(const Duration(seconds: 1));
+      _currentAddress.value = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
+      _hasWallet.value = true;
+      return true;
+    } catch (e) {
+      _errorMessage.value = 'Failed to import wallet: ${e.toString()}';
+      return false;
+    } finally {
+      _isLoading.value = false;
+    }
+  }
+
+  /// Get wallet balance
+  /// 
+  /// SEPARATION OF CONCERNS:
+  /// - Calls GetBalanceUseCase (domain layer)
+  /// - Use case queries blockchain
+  /// - Use case formats balance
+  /// - Controller updates reactive state
+  Future<void> refreshBalance() async {
+    if (_currentAddress.value.isEmpty) return;
+
+    try {
+      // TODO: Call use case
+      // final balance = await _getBalanceUseCase(_currentAddress.value);
+      // _balance.value = balance.eth;
+      // _balanceUsd.value = balance.usd;
+
+      // Placeholder
+      await Future.delayed(const Duration(milliseconds: 500));
+      _balance.value = '1.234';
+      _balanceUsd.value = '2,468.00';
+    } catch (e) {
+      _errorMessage.value = 'Failed to refresh balance';
+    }
+  }
+
+  /// Get current address
+  /// 
+  /// Returns cached address (public info, safe to return).
+  String getCurrentAddress() {
+    return _currentAddress.value;
+  }
+
+  /// Clear error message
+  void clearError() {
+    _errorMessage.value = null;
+  }
+
+  /// Reset wallet state (for testing or logout)
+  void reset() {
+    _currentAddress.value = '';
+    _balance.value = '0.0';
+    _balanceUsd.value = '0.00';
+    _hasWallet.value = false;
+    _errorMessage.value = null;
+  }
+}
