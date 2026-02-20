@@ -28,12 +28,14 @@ class AppConfig {
   static const Duration autoLockDuration = Duration(minutes: 5);
 
   // Network settings (load from environment in production)
-  static String get ethereumRpcUrl =>
-      _getEnvOrDefault('ETHEREUM_RPC_URL', 'https://cloudflare-eth.com');
+  static String get ethereumRpcUrl => _getEnvOrDefault(
+    'ETHEREUM_RPC_URL',
+    'https://mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
+  );
 
   static String get sepoliaRpcUrl => _getEnvOrDefault(
     'SEPOLIA_RPC_URL',
-    'https://ethereum-sepolia-rpc.publicnode.com',
+    'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
   );
 
   // Logging configuration

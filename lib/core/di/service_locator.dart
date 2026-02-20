@@ -157,7 +157,8 @@ class ServiceLocator {
             // Fallback to Sepolia for testing if no network selected
             print('WARNING: No network selected, defaulting to Sepolia');
             return RpcClientImpl(
-              rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+              rpcUrl:
+                  'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
             );
           }
 
@@ -170,7 +171,8 @@ class ServiceLocator {
           // Fallback if NetworkController not ready
           print('ERROR: Failed to get network, defaulting to Sepolia: $e');
           return RpcClientImpl(
-            rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+            rpcUrl:
+                'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
           );
         }
       },

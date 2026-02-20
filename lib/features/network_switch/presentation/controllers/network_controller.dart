@@ -100,7 +100,8 @@ class NetworkController extends GetxController {
           chainId: 1,
           rpcUrl: const String.fromEnvironment(
             'ETHEREUM_RPC_URL',
-            defaultValue: 'https://cloudflare-eth.com',
+            defaultValue:
+                'https://mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
           ),
           symbol: 'ETH',
           explorerUrl: 'https://etherscan.io',
@@ -112,7 +113,8 @@ class NetworkController extends GetxController {
           chainId: 11155111,
           rpcUrl: const String.fromEnvironment(
             'SEPOLIA_RPC_URL',
-            defaultValue: 'https://ethereum-sepolia-rpc.publicnode.com',
+            defaultValue:
+                'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
           ),
           symbol: 'ETH',
           explorerUrl: 'https://sepolia.etherscan.io',
