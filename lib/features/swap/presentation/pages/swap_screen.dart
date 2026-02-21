@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../network_switch/presentation/controllers/network_controller.dart';
-import '../../../wallet/presentation/controllers/auth_controller.dart';
+import '../../../wallet/presentation/controllers/wallet_controller.dart';
+import '../../../swap/domain/usecases/get_token_balance_usecase.dart';
 import '../controllers/swap_controller.dart';
 import '../../domain/entities/swap_quote.dart';
 
@@ -45,9 +47,18 @@ class _SwapScreenState extends State<SwapScreen> {
   TokenInfo? _sellToken;
   TokenInfo? _buyToken;
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _customSlippageController =
+      TextEditingController();
+  Timer? _quoteExpiryTimer;
+  int _quoteSecondsRemaining = 0;
 
-  // Placeholder tokens - in production these would come from controller/token list
-  static final List<TokenInfo> _availableTokens = [
+  // Per-network token balance state
+  String _sellTokenBalance = '...';
+  bool _isLoadingBalance = false;
+
+  // Token lists per network (dynamic, based on active chainId)
+  // Default tokens for Ethereum Mainnet (chainId: 1)
+  static final List<TokenInfo> _ethereumTokens = [
     TokenInfo(
       symbol: 'ETH',
       name: 'Ethereum',
@@ -69,7 +80,7 @@ class _SwapScreenState extends State<SwapScreen> {
     TokenInfo(
       symbol: 'DAI',
       name: 'Dai Stablecoin',
-      address: '0x6B175474E89094C44Da98b954EesddFD659F90E',
+      address: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
       decimals: 18,
     ),
     TokenInfo(
@@ -80,51 +91,238 @@ class _SwapScreenState extends State<SwapScreen> {
     ),
   ];
 
-  // Get controllers (will be injected by binding)
-  SwapController get _swapController => Get.find<SwapController>();
-  NetworkController get _networkController => Get.find<NetworkController>();
-  AuthController get _authController => Get.find<AuthController>();
+  static final List<TokenInfo> _polygonTokens = [
+    TokenInfo(
+      symbol: 'MATIC',
+      name: 'Polygon',
+      address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'USDT',
+      name: 'Tether USD',
+      address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'USDC',
+      name: 'USD Coin',
+      address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'WETH',
+      name: 'Wrapped ETH',
+      address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
+      decimals: 18,
+    ),
+  ];
 
-  /// Check if wallet is unlocked
-  bool get _isWalletUnlocked {
-    try {
-      return _authController.isUnlocked;
-    } catch (e) {
-      return false;
+  static final List<TokenInfo> _bscTokens = [
+    TokenInfo(
+      symbol: 'BNB',
+      name: 'BNB',
+      address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'USDT',
+      name: 'Tether USD',
+      address: '0x55d398326f99059fF775485246999027B3197955',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'USDC',
+      name: 'USD Coin',
+      address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'WBNB',
+      name: 'Wrapped BNB',
+      address: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+      decimals: 18,
+    ),
+  ];
+
+  static final List<TokenInfo> _baseTokens = [
+    TokenInfo(
+      symbol: 'ETH',
+      name: 'Ethereum',
+      address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'USDC',
+      name: 'USD Coin',
+      address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
+      decimals: 18,
+    ),
+  ];
+
+  static final List<TokenInfo> _arbitrumTokens = [
+    TokenInfo(
+      symbol: 'ETH',
+      name: 'Ethereum',
+      address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'USDT',
+      name: 'Tether USD',
+      address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'USDC',
+      name: 'USD Coin',
+      address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'WETH',
+      name: 'Wrapped ETH',
+      address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+      decimals: 18,
+    ),
+  ];
+
+  static final List<TokenInfo> _optimismTokens = [
+    TokenInfo(
+      symbol: 'ETH',
+      name: 'Ethereum',
+      address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      decimals: 18,
+    ),
+    TokenInfo(
+      symbol: 'USDT',
+      name: 'Tether USD',
+      address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'USDC',
+      name: 'USD Coin',
+      address: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+      decimals: 6,
+    ),
+    TokenInfo(
+      symbol: 'WETH',
+      name: 'Wrapped ETH',
+      address: '0x4200000000000000000000000000000000000006',
+      decimals: 18,
+    ),
+  ];
+
+  /// Get token list for current network
+  List<TokenInfo> get _availableTokens {
+    final chainId = _networkController.currentNetwork?.chainId;
+    switch (chainId) {
+      case 1:
+        return _ethereumTokens; // Ethereum Mainnet
+      case 137:
+        return _polygonTokens; // Polygon
+      case 56:
+        return _bscTokens; // BSC
+      case 8453:
+        return _baseTokens; // Base
+      case 42161:
+        return _arbitrumTokens; // Arbitrum
+      case 10:
+        return _optimismTokens; // Optimism
+      default:
+        return _ethereumTokens; // Fallback to Ethereum tokens
     }
   }
 
-  /// Navigate to unlock screen and return result
-  Future<bool> _ensureWalletUnlocked() async {
-    if (_isWalletUnlocked) return true;
-
-    // Show message that wallet is locked
-    Get.snackbar(
-      'Wallet Locked',
-      'Please unlock your wallet to continue',
-      snackPosition: SnackPosition.BOTTOM,
-      duration: const Duration(seconds: 2),
-      backgroundColor: AppTheme.accentRed,
-      colorText: AppTheme.textPrimary,
-    );
-
-    // Navigate to unlock screen
-    final result = await Get.toNamed<bool>('/unlock');
-    return result ?? false;
-  }
+  // Get controllers (will be injected by binding)
+  SwapController get _swapController => Get.find<SwapController>();
+  NetworkController get _networkController => Get.find<NetworkController>();
 
   @override
   void initState() {
     super.initState();
-    // Set default tokens
-    _sellToken = _availableTokens[0]; // ETH
-    _buyToken = _availableTokens[1]; // USDT
+    // Set default tokens based on current network
+    final tokens = _availableTokens;
+    _sellToken = tokens.isNotEmpty ? tokens[0] : null; // Native token
+    _buyToken = tokens.length > 1 ? tokens[1] : null; // First stablecoin
+    // Fetch initial balance for selected sell token
+    if (_sellToken != null) {
+      _fetchSellTokenBalance();
+    }
+  }
+
+  /// Fetch token balance for the currently selected sell token.
+  Future<void> _fetchSellTokenBalance() async {
+    if (_sellToken == null) return;
+    final walletAddress = Get.find<WalletController>().currentAddress.value;
+    if (walletAddress.isEmpty) return;
+
+    setState(() {
+      _isLoadingBalance = true;
+      _sellTokenBalance = '...';
+    });
+
+    try {
+      final useCase = Get.find<GetTokenBalanceUseCase>();
+      final balance = await useCase.call(
+        tokenAddress: _sellToken!.address,
+        walletAddress: walletAddress,
+        decimals: _sellToken!.decimals,
+        symbol: _sellToken!.symbol,
+      );
+      if (mounted) {
+        setState(() {
+          _sellTokenBalance = balance.toDecimalString(maxDecimals: 6);
+          _isLoadingBalance = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _sellTokenBalance = 'N/A';
+          _isLoadingBalance = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _amountController.dispose();
+    _customSlippageController.dispose();
+    _quoteExpiryTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start 30-second quote expiry countdown
+  void _startQuoteExpiryTimer() {
+    _quoteExpiryTimer?.cancel();
+    setState(() => _quoteSecondsRemaining = 30);
+    _quoteExpiryTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _quoteSecondsRemaining--;
+        if (_quoteSecondsRemaining <= 0) {
+          timer.cancel();
+          _swapController.reset();
+        }
+      });
+    });
+  }
+
+  void _stopQuoteExpiryTimer() {
+    _quoteExpiryTimer?.cancel();
+    setState(() => _quoteSecondsRemaining = 0);
   }
 
   @override
@@ -168,44 +366,193 @@ class _SwapScreenState extends State<SwapScreen> {
     );
   }
 
-  /// Network indicator showing current network
+  /// Network indicator showing current network (Clickable to switch)
   Widget _buildNetworkIndicator(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTheme.spacingM,
-        vertical: AppTheme.spacingS,
-      ),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceDark.withValues(alpha: 0.6),
+    return Center(
+      child: InkWell(
+        onTap: () => _showNetworkSelector(context),
         borderRadius: BorderRadius.circular(AppTheme.radiusL),
-        border: Border.all(
-          color: AppTheme.primaryPurple.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Colors.green,
-              shape: BoxShape.circle,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingM,
+            vertical: AppTheme.spacingS,
+          ),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceDark.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(AppTheme.radiusL),
+            border: Border.all(
+              color: AppTheme.primaryPurple.withValues(alpha: 0.3),
+              width: 1,
             ),
           ),
-          const SizedBox(width: AppTheme.spacingS),
-          Obx(() {
-            final network = _networkController.currentNetwork;
-            return Text(
-              network?.name ?? 'No Network',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-            );
-          }),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacingS),
+              Obx(() {
+                final network = _networkController.currentNetwork;
+                return Text(
+                  network?.name ?? 'No Network',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                );
+              }),
+              const SizedBox(width: AppTheme.spacingS),
+              const Icon(
+                Icons.keyboard_arrow_down,
+                size: 16,
+                color: AppTheme.textSecondary,
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  /// Show network selection bottom sheet
+  void _showNetworkSelector(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTheme.radiusL),
+        ),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppTheme.spacingL),
+                child: Text(
+                  'Switch Network',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              const Divider(color: AppTheme.divider, height: 1),
+              Obx(() {
+                final networks = _networkController.networks;
+                final currentNetwork = _networkController.currentNetwork;
+
+                final mainnets = networks.where((n) => !n.isTestnet).toList();
+                final testnets = networks.where((n) => n.isTestnet).toList();
+
+                Widget buildNetworkTile(dynamic network) {
+                  final isSelected = network.id == currentNetwork?.id;
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.surfaceDark,
+                      radius: 16,
+                      child: Text(
+                        network.symbol.substring(0, 1),
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      network.name,
+                      style: TextStyle(
+                        color: isSelected
+                            ? AppTheme.primaryPurple
+                            : AppTheme.textPrimary,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? const Icon(
+                            Icons.check_circle,
+                            color: AppTheme.primaryPurple,
+                          )
+                        : null,
+                    onTap: () async {
+                      Get.back(); // Close bottom sheet
+
+                      // Switch network
+                      await _networkController.switchNetwork(network);
+
+                      Get.snackbar(
+                        'Network Switched',
+                        'Successfully switched to ${network.name}',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: AppTheme.surfaceDark,
+                        colorText: AppTheme.textPrimary,
+                        icon: const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                        ),
+                        duration: const Duration(seconds: 2),
+                      );
+                    },
+                  );
+                }
+
+                return Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      if (mainnets.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: AppTheme.spacingL,
+                            right: AppTheme.spacingL,
+                            top: AppTheme.spacingM,
+                            bottom: AppTheme.spacingS,
+                          ),
+                          child: Text(
+                            'Mainnets',
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
+                        ...mainnets.map((n) => buildNetworkTile(n)),
+                      ],
+                      if (testnets.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: AppTheme.spacingL,
+                            right: AppTheme.spacingL,
+                            top: AppTheme.spacingM,
+                            bottom: AppTheme.spacingS,
+                          ),
+                          child: Text(
+                            'Testnets',
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
+                        ...testnets.map((n) => buildNetworkTile(n)),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -307,8 +654,11 @@ class _SwapScreenState extends State<SwapScreen> {
                       },
                     ),
                     const SizedBox(height: 2),
+                    // Display actual balance for selected sell token
                     Text(
-                      'Balance: 0.0', // TODO: Get from controller
+                      _isLoadingBalance
+                          ? 'Balance: ...'
+                          : 'Balance: $_sellTokenBalance ${_sellToken?.symbol ?? ""}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.textTertiary,
                       ),
@@ -373,7 +723,12 @@ class _SwapScreenState extends State<SwapScreen> {
                       }
 
                       return Text(
-                        quote != null ? _formatAmount(quote.buyAmount) : '0.0',
+                        quote != null
+                            ? _formatAmount(
+                                quote.buyAmount,
+                                decimals: _buyToken?.decimals ?? 18,
+                              )
+                            : '0.0',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -382,11 +737,19 @@ class _SwapScreenState extends State<SwapScreen> {
                     const SizedBox(height: 2),
                     Obx(() {
                       final quote = _swapController.swapQuote;
-                      if (quote == null) {
-                        return const SizedBox.shrink();
-                      }
+                      if (quote == null) return const SizedBox.shrink();
+                      // Estimate USD value using ETH gas price as rough proxy
+                      // In production: integrate a price oracle (CoinGecko, etc.)
+                      final buyAmtDecimal = _formatAmountDouble(
+                        quote.buyAmount,
+                        decimals: _buyToken?.decimals ?? 18,
+                      );
+                      final usdEstimate = _estimateUsdValue(
+                        buyAmtDecimal,
+                        _buyToken?.symbol ?? '',
+                      );
                       return Text(
-                        '~\$0.00', // TODO: Calculate USD value
+                        usdEstimate != null ? '≈\$$usdEstimate USD' : '',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppTheme.textTertiary,
                         ),
@@ -470,8 +833,14 @@ class _SwapScreenState extends State<SwapScreen> {
     return Center(
       child: InkWell(
         onTap: () {
-          // Controller hook for swapping tokens
-          _swapController.clearError();
+          setState(() {
+            final temp = _sellToken;
+            _sellToken = _buyToken;
+            _buyToken = temp;
+          });
+          _amountController.clear();
+          _stopQuoteExpiryTimer();
+          _swapController.reset();
         },
         borderRadius: BorderRadius.circular(20),
         child: Container(
@@ -586,16 +955,19 @@ class _SwapScreenState extends State<SwapScreen> {
 
   /// Custom slippage input field
   Widget _buildCustomSlippageInput(BuildContext context) {
+    final isCustomSelected = ![0.005, 0.01, 0.02].contains(_selectedSlippage);
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppTheme.spacingS,
         vertical: AppTheme.spacingXS,
       ),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceDark,
+        color: isCustomSelected ? AppTheme.primaryPurple : AppTheme.surfaceDark,
         borderRadius: BorderRadius.circular(AppTheme.radiusS),
         border: Border.all(
-          color: AppTheme.primaryPurple.withValues(alpha: 0.3),
+          color: isCustomSelected
+              ? AppTheme.primaryPurple
+              : AppTheme.primaryPurple.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -603,8 +975,13 @@ class _SwapScreenState extends State<SwapScreen> {
         children: [
           Expanded(
             child: TextField(
+              controller: _customSlippageController,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: isCustomSelected
+                    ? AppTheme.textPrimary
+                    : AppTheme.textSecondary,
+              ),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -618,16 +995,24 @@ class _SwapScreenState extends State<SwapScreen> {
                 isDense: true,
               ),
               onChanged: (value) {
-                // Controller hook for custom slippage
-                _swapController.clearError();
+                final parsed = double.tryParse(value);
+                if (parsed != null && parsed > 0 && parsed <= 50) {
+                  setState(() {
+                    _selectedSlippage = parsed / 100;
+                  });
+                  _swapController.reset();
+                  _stopQuoteExpiryTimer();
+                }
               },
             ),
           ),
           Text(
             '%',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: isCustomSelected
+                  ? AppTheme.textPrimary
+                  : AppTheme.textSecondary,
+            ),
           ),
         ],
       ),
@@ -644,12 +1029,66 @@ class _SwapScreenState extends State<SwapScreen> {
         return const SizedBox.shrink();
       }
 
+      // Calculate rate: how many buyTokens per 1 sellToken
+      String rateText = 'Loading...';
+      String networkFeeText = 'Loading...';
+      String priceImpactText = 'Loading...';
+
+      if (quote != null && _sellToken != null && _buyToken != null) {
+        final sellDecimals = _sellToken!.decimals;
+        final buyDecimals = _buyToken!.decimals;
+
+        if (quote.sellAmount > BigInt.zero) {
+          final sellD = quote.sellAmount / BigInt.from(10).pow(sellDecimals);
+          final buyD = quote.buyAmount / BigInt.from(10).pow(buyDecimals);
+          if (sellD > 0) {
+            final rate = buyD / sellD;
+            rateText =
+                '1 ${_sellToken!.symbol} = ${rate.toStringAsFixed(6)} ${_buyToken!.symbol}';
+          }
+        }
+
+        // Network fee in ETH
+        final feeWei = quote.gas * quote.gasPrice;
+        final feeEth = feeWei / BigInt.from(10).pow(18);
+        networkFeeText = '~${feeEth.toStringAsFixed(6)} ETH';
+
+        // Price impact: use real data from 0x API v2 (estimatedPriceImpact)
+        priceImpactText = quote.priceImpactText;
+      }
+
       return Column(
         children: [
+          // Quote expiry countdown
+          if (_quoteSecondsRemaining > 0) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(
+                  Icons.timer_outlined,
+                  size: 14,
+                  color: _quoteSecondsRemaining <= 10
+                      ? AppTheme.accentRed
+                      : AppTheme.textTertiary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Quote expires in ${_quoteSecondsRemaining}s',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: _quoteSecondsRemaining <= 10
+                        ? AppTheme.accentRed
+                        : AppTheme.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTheme.spacingS),
+          ],
+
           // Gas Estimate
           _buildInfoRow(
             context,
-            'Estimated Gas',
+            'Gas Limit',
             isLoading ? 'Loading...' : _formatGasEstimate(quote?.gas),
           ),
           const SizedBox(height: AppTheme.spacingS),
@@ -658,23 +1097,19 @@ class _SwapScreenState extends State<SwapScreen> {
           _buildInfoRow(
             context,
             'Network Fee',
-            isLoading ? 'Loading...' : '~\$0.00',
+            isLoading ? 'Loading...' : networkFeeText,
           ),
           const SizedBox(height: AppTheme.spacingS),
 
           // Rate
-          _buildInfoRow(
-            context,
-            'Rate',
-            isLoading ? 'Loading...' : '1 ETH = 0 USDT',
-          ),
+          _buildInfoRow(context, 'Rate', isLoading ? 'Loading...' : rateText),
           const SizedBox(height: AppTheme.spacingS),
 
           // Price Impact
           _buildInfoRow(
             context,
             'Price Impact',
-            isLoading ? 'Loading...' : '<0.01%',
+            isLoading ? 'Loading...' : priceImpactText,
             valueColor: AppTheme.accentGreen,
           ),
         ],
@@ -813,9 +1248,11 @@ class _SwapScreenState extends State<SwapScreen> {
       onTap = null;
     } else {
       label = 'Swap';
-      // Swap enabled only when: allowance sufficient, valid quote, wallet unlocked
-      enabled = canSwap;
-      onTap = canSwap ? () => _showSwapConfirmation(context) : null;
+      // Enable swap button when: allowance sufficient, valid quote, not loading
+      // Wallet unlock is handled by _showSwapConfirmation when tapped
+      final swapReady = hasQuote && !needsApproval && !isLoading;
+      enabled = swapReady;
+      onTap = swapReady ? () => _showSwapConfirmation(context) : null;
     }
 
     return _buildButton(
@@ -930,6 +1367,14 @@ class _SwapScreenState extends State<SwapScreen> {
   }
 
   /// Get quote from controller
+  ///
+  /// Getting a quote is a read-only API call that does NOT need
+  /// private keys or wallet unlocking. It only needs the wallet
+  /// address (public info) as the taker address.
+  ///
+  /// The wallet must only be unlocked later for:
+  /// - Token approval (signing)
+  /// - Swap execution (signing)
   Future<void> _getQuote() async {
     // Validate inputs
     if (_sellToken == null || _buyToken == null) {
@@ -968,6 +1413,8 @@ class _SwapScreenState extends State<SwapScreen> {
       return;
     }
 
+    _stopQuoteExpiryTimer();
+
     // Call controller to get quote
     final quote = await _swapController.getQuote(
       sellToken: _sellToken!.address,
@@ -983,6 +1430,8 @@ class _SwapScreenState extends State<SwapScreen> {
         spenderAddress: quote.allowanceTarget,
         sellAmount: amount,
       );
+      // Start expiry countdown after quote is ready
+      _startQuoteExpiryTimer();
     }
   }
 
@@ -1011,12 +1460,6 @@ class _SwapScreenState extends State<SwapScreen> {
 
   /// Show approve confirmation dialog with PIN input
   Future<void> _showApproveConfirmation(BuildContext context) async {
-    // Check wallet lock state first
-    if (!_isWalletUnlocked) {
-      final unlocked = await _ensureWalletUnlocked();
-      if (!unlocked) return;
-    }
-
     final quote = _swapController.swapQuote;
     if (quote == null || _sellToken == null) return;
 
@@ -1056,12 +1499,6 @@ class _SwapScreenState extends State<SwapScreen> {
 
   /// Show swap confirmation dialog with PIN input
   Future<void> _showSwapConfirmation(BuildContext context) async {
-    // Check wallet lock state first
-    if (!_isWalletUnlocked) {
-      final unlocked = await _ensureWalletUnlocked();
-      if (!unlocked) return;
-    }
-
     final quote = _swapController.swapQuote;
     if (quote == null) return;
 
@@ -1186,16 +1623,23 @@ class _SwapScreenState extends State<SwapScreen> {
     return '${hash.substring(0, 8)}...${hash.substring(hash.length - 6)}';
   }
 
-  /// Format BigInt amount to readable string
-  String _formatAmount(BigInt amount) {
-    // Simple formatting - in production use proper decimal conversion
+  /// Format BigInt amount to readable string using token decimals
+  String _formatAmount(BigInt amount, {int decimals = 18}) {
+    if (amount == BigInt.zero) return '0';
     final str = amount.toString();
-    if (str.length <= 18) {
-      return '0.${str.padLeft(18, '0').substring(0, 4)}';
+    if (str.length <= decimals) {
+      final padded = str.padLeft(decimals, '0');
+      final trimmed = padded.replaceAll(RegExp(r'0+$'), '');
+      if (trimmed.isEmpty) return '0';
+      return '0.$trimmed';
     }
-    final integerPart = str.substring(0, str.length - 18);
-    final decimalPart = str.substring(str.length - 18, str.length - 14);
-    return '$integerPart.$decimalPart';
+    final integerPart = str.substring(0, str.length - decimals);
+    final decimalPart = str.substring(str.length - decimals);
+    final trimmedDecimal = decimalPart
+        .substring(0, decimals.clamp(0, 6))
+        .replaceAll(RegExp(r'0+$'), '');
+    if (trimmedDecimal.isEmpty) return integerPart;
+    return '$integerPart.$trimmedDecimal';
   }
 
   /// Format gas estimate
@@ -1203,12 +1647,35 @@ class _SwapScreenState extends State<SwapScreen> {
     if (gas == null) return '0';
     return gas.toString();
   }
+
+  /// Format BigInt amount to double for calculations
+  double _formatAmountDouble(BigInt amount, {int decimals = 18}) {
+    if (amount == BigInt.zero) return 0.0;
+    final str = amount.toString().padLeft(decimals + 1, '0');
+    final intPart = str.substring(0, str.length - decimals);
+    final decPart = str.substring(str.length - decimals);
+    return double.tryParse('$intPart.$decPart') ?? 0.0;
+  }
+
+  /// Estimate USD value for common stablecoins.
+  /// Returns null for non-stablecoin tokens (no reliable price without oracle).
+  /// In production: integrate CoinGecko, Chainlink Price Feeds, or similar.
+  String? _estimateUsdValue(double amount, String symbol) {
+    if (amount <= 0) return null;
+    // For stablecoins: 1:1 with USD
+    const stablecoins = ['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'FRAX'];
+    if (stablecoins.contains(symbol.toUpperCase())) {
+      return amount.toStringAsFixed(2);
+    }
+    // For other tokens: cannot estimate without price oracle
+    return null;
+  }
 }
 
 /// Token Selector Bottom Sheet
 ///
-/// Shows list of available tokens for selection.
-class _TokenSelectorSheet extends StatelessWidget {
+/// Shows list of available tokens for selection with working search/filter.
+class _TokenSelectorSheet extends StatefulWidget {
   final List<TokenInfo> tokens;
   final TokenInfo? selectedToken;
   final TokenInfo? excludeToken;
@@ -1220,6 +1687,50 @@ class _TokenSelectorSheet extends StatelessWidget {
     this.excludeToken,
     required this.onSelect,
   });
+
+  @override
+  State<_TokenSelectorSheet> createState() => _TokenSelectorSheetState();
+}
+
+class _TokenSelectorSheetState extends State<_TokenSelectorSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  List<TokenInfo> _filteredTokens = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredTokens = _getVisibleTokens(widget.tokens);
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<TokenInfo> _getVisibleTokens(List<TokenInfo> tokens) {
+    return tokens
+        .where((t) => t.symbol != widget.excludeToken?.symbol)
+        .toList();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase().trim();
+    final visible = _getVisibleTokens(widget.tokens);
+    setState(() {
+      if (query.isEmpty) {
+        _filteredTokens = visible;
+      } else {
+        _filteredTokens = visible.where((t) {
+          return t.symbol.toLowerCase().contains(query) ||
+              t.name.toLowerCase().contains(query) ||
+              t.address.toLowerCase().contains(query);
+        }).toList();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1257,14 +1768,26 @@ class _TokenSelectorSheet extends StatelessWidget {
           ),
           const SizedBox(height: AppTheme.spacingL),
 
-          // Search (placeholder)
+          // Search (fully functional with filter)
           TextField(
+            controller: _searchController,
             decoration: InputDecoration(
-              hintText: 'Search token name or paste address',
+              hintText: 'Search token name, symbol or address',
               prefixIcon: const Icon(
                 Icons.search,
                 color: AppTheme.textSecondary,
               ),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(
+                        Icons.clear,
+                        color: AppTheme.textSecondary,
+                      ),
+                      onPressed: () {
+                        _searchController.clear();
+                      },
+                    )
+                  : null,
               filled: true,
               fillColor: AppTheme.surfaceDark,
               border: OutlineInputBorder(
@@ -1277,23 +1800,31 @@ class _TokenSelectorSheet extends StatelessWidget {
 
           // Token List
           Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: tokens.length,
-              itemBuilder: (context, index) {
-                final token = tokens[index];
-                // Skip excluded token (can't swap same token)
-                if (excludeToken != null &&
-                    token.symbol == excludeToken!.symbol) {
-                  return const SizedBox.shrink();
-                }
-                return _buildTokenItem(
-                  context,
-                  token,
-                  isSelected: token.symbol == selectedToken?.symbol,
-                );
-              },
-            ),
+            child: _filteredTokens.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spacingL),
+                      child: Text(
+                        'No tokens found',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _filteredTokens.length,
+                    itemBuilder: (context, index) {
+                      final token = _filteredTokens[index];
+                      return _buildTokenItem(
+                        context,
+                        token,
+                        isSelected:
+                            token.symbol == widget.selectedToken?.symbol,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -1306,7 +1837,7 @@ class _TokenSelectorSheet extends StatelessWidget {
     bool isSelected = false,
   }) {
     return InkWell(
-      onTap: () => onSelect(token),
+      onTap: () => widget.onSelect(token),
       borderRadius: BorderRadius.circular(AppTheme.radiusM),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingM),
@@ -1381,7 +1912,7 @@ class TokenInfo {
   final String address;
   final int decimals;
 
-  TokenInfo({
+  const TokenInfo({
     required this.symbol,
     required this.name,
     required this.address,
@@ -1431,15 +1962,23 @@ class SwapReviewModal extends StatelessWidget {
     required this.gasEstimate,
   });
 
-  /// Format BigInt amount to readable string
-  String _formatAmount(BigInt amount) {
+  /// Format BigInt amount to readable string using token decimals
+  String _formatAmount(BigInt amount, {int decimals = 18}) {
+    if (amount == BigInt.zero) return '0';
     final str = amount.toString();
-    if (str.length <= 18) {
-      return '0.${str.padLeft(18, '0').substring(0, 4)}';
+    if (str.length <= decimals) {
+      final padded = str.padLeft(decimals, '0');
+      final trimmed = padded.replaceAll(RegExp(r'0+$'), '');
+      if (trimmed.isEmpty) return '0';
+      return '0.$trimmed';
     }
-    final integerPart = str.substring(0, str.length - 18);
-    final decimalPart = str.substring(str.length - 18, str.length - 14);
-    return '$integerPart.$decimalPart';
+    final integerPart = str.substring(0, str.length - decimals);
+    final decimalPart = str.substring(str.length - decimals);
+    final trimmedDecimal = decimalPart
+        .substring(0, decimals.clamp(0, 6))
+        .replaceAll(RegExp(r'0+$'), '');
+    if (trimmedDecimal.isEmpty) return integerPart;
+    return '$integerPart.$trimmedDecimal';
   }
 
   bool get _isHighSlippage => slippage > 0.02;
@@ -1497,7 +2036,7 @@ class SwapReviewModal extends StatelessWidget {
                   _buildDetailRow(
                     context,
                     'You Get (est.)',
-                    '~${_formatAmount(buyAmount)} ${buyToken.symbol}',
+                    '~${_formatAmount(buyAmount, decimals: buyToken.decimals)} ${buyToken.symbol}',
                     isPrimary: true,
                   ),
                 ],

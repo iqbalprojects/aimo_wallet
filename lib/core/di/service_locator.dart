@@ -55,6 +55,21 @@ import '../../features/transaction/presentation/controllers/transaction_controll
 // Presentation layer - Network
 import '../../features/network_switch/presentation/controllers/network_controller.dart';
 
+// Core services - Swap
+import 'package:http/http.dart' as http;
+import 'package:web3dart/web3dart.dart';
+import '../blockchain/evm/swap/zero_x_api_service.dart';
+import '../blockchain/evm/erc20/erc20_service.dart';
+import '../blockchain/evm/gas/gas_price_oracle_service.dart';
+
+// Domain layer - Swap
+import '../../features/swap/domain/usecases/get_swap_quote_usecase.dart';
+import '../../features/swap/domain/usecases/check_allowance_usecase.dart';
+import '../../features/swap/domain/usecases/approve_token_usecase.dart';
+import '../../features/swap/domain/usecases/execute_swap_usecase.dart';
+import '../../features/swap/domain/usecases/get_token_balance_usecase.dart';
+import '../../features/swap/domain/usecases/swap_preparation_usecase.dart';
+
 /// Service Locator / Dependency Injection
 ///
 /// Responsibility: Register and provide dependencies.
@@ -82,6 +97,9 @@ class ServiceLocator {
 
     // Register use cases (except those with controller dependencies)
     _registerUseCases();
+
+    // Register swap services and use cases
+    _registerSwapDependencies();
 
     // Register controllers
     _registerControllers();
@@ -252,6 +270,7 @@ class ServiceLocator {
     // Unlock wallet use case
     Get.lazyPut<UnlockWalletUseCase>(
       () => UnlockWalletUseCase(secureVault: Get.find<SecureVault>()),
+      fenix: true,
     );
 
     // Get wallet address use case
@@ -311,6 +330,82 @@ class ServiceLocator {
       () => BroadcastTransactionUseCase(rpcClient: Get.find<RpcClient>()),
       fenix: true,
     );
+  }
+
+  /// Register swap services and use cases
+  static void _registerSwapDependencies() {
+    // 0x API service for swap quotes (v2/permit2)
+    // IMPORTANT: Uses chainId from current network for multi-chain support
+    // fenix: true so it can be recreated after network switch
+    Get.lazyPut<ZeroXApiService>(() {
+      final networkController = Get.find<NetworkController>();
+      final currentNetwork = networkController.currentNetwork;
+      // Default to Ethereum mainnet chainId=1 if no network selected
+      final chainId = currentNetwork?.chainId ?? 1;
+      return ZeroXApiService(chainId: chainId);
+    }, fenix: true);
+
+    // ERC20 service for token balance/allowance
+    Get.lazyPut<Erc20Service>(() {
+      final networkController = Get.find<NetworkController>();
+      final currentNetwork = networkController.currentNetwork;
+      final rpcUrl =
+          currentNetwork?.rpcUrl ??
+          'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28';
+      final web3Client = Web3Client(rpcUrl, http.Client());
+      return Erc20Service(web3Client);
+    }, fenix: true);
+
+    // Gas price oracle service
+    Get.lazyPut<GasPriceOracleService>(() {
+      final networkController = Get.find<NetworkController>();
+      final currentNetwork = networkController.currentNetwork;
+      final rpcUrl =
+          currentNetwork?.rpcUrl ??
+          'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28';
+      final web3Client = Web3Client(rpcUrl, http.Client());
+      return GasPriceOracleService(web3Client: web3Client);
+    }, fenix: true);
+
+    // Check allowance use case
+    Get.lazyPut<CheckAllowanceUseCase>(
+      () => CheckAllowanceUseCase(erc20Service: Get.find<Erc20Service>()),
+      fenix: true,
+    );
+
+    // Approve token use case
+    Get.lazyPut<ApproveTokenUseCase>(
+      () => ApproveTokenUseCase(erc20Service: Get.find<Erc20Service>()),
+      fenix: true,
+    );
+
+    // Get token balance use case
+    Get.lazyPut<GetTokenBalanceUseCase>(
+      () => GetTokenBalanceUseCase(
+        erc20Service: Get.find<Erc20Service>(),
+        rpcClient: Get.find<RpcClient>(),
+      ),
+      fenix: true,
+    );
+
+    // Swap preparation use case
+    Get.lazyPut<SwapPreparationUseCase>(
+      () => SwapPreparationUseCase(
+        erc20Service: Get.find<Erc20Service>(),
+        checkAllowanceUseCase: Get.find<CheckAllowanceUseCase>(),
+        rpcClient: Get.find<RpcClient>(),
+      ),
+      fenix: true,
+    );
+
+    // Get swap quote use case
+    Get.lazyPut<GetSwapQuoteUseCase>(
+      () => GetSwapQuoteUseCase(zeroXApiService: Get.find<ZeroXApiService>()),
+      fenix: true,
+    );
+
+    // Execute swap use case (stateless, no dependencies)
+    Get.lazyPut<ExecuteSwapUseCase>(() => ExecuteSwapUseCase(), fenix: true);
   }
 
   /// Register use cases that depend on controllers

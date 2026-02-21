@@ -4,9 +4,9 @@ import '../../../../core/theme/app_theme.dart';
 import '../controllers/network_controller.dart';
 
 /// Network Selector Bottom Sheet
-/// 
+///
 /// Modal bottom sheet for selecting network.
-/// 
+///
 /// Features:
 /// - List of available networks
 /// - Current network highlighted
@@ -14,7 +14,7 @@ import '../controllers/network_controller.dart';
 /// - Custom network indicator
 /// - Add custom network button
 /// - Reactive updates
-/// 
+///
 /// Usage:
 /// ```dart
 /// showModalBottomSheet(
@@ -49,7 +49,7 @@ class NetworkSelectorSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // Header
           Padding(
             padding: const EdgeInsets.all(AppTheme.spacingL),
@@ -58,9 +58,9 @@ class NetworkSelectorSheet extends StatelessWidget {
               children: [
                 Text(
                   'Select Network',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -78,36 +78,78 @@ class NetworkSelectorSheet extends StatelessWidget {
               final networks = controller.networks;
               final currentNetwork = controller.currentNetwork;
 
-              return ListView.builder(
+              final mainnets = networks.where((n) => !n.isTestnet).toList();
+              final testnets = networks.where((n) => n.isTestnet).toList();
+
+              Widget buildNetworkTile(dynamic network) {
+                final isSelected = network.id == currentNetwork?.id;
+                return _buildNetworkItem(
+                  context,
+                  network: network,
+                  isSelected: isSelected,
+                  onTap: () async {
+                    final success = await controller.switchNetwork(network);
+                    if (success && context.mounted) {
+                      Navigator.pop(context);
+                      Get.snackbar(
+                        'Network Changed',
+                        'Switched to ${network.name}',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: AppTheme.surfaceDark,
+                        colorText: AppTheme.textPrimary,
+                        icon: const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                        ),
+                      );
+                    }
+                  },
+                );
+              }
+
+              return ListView(
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(
                   vertical: AppTheme.spacingM,
                 ),
-                itemCount: networks.length,
-                itemBuilder: (context, index) {
-                  final network = networks[index];
-                  final isSelected = network.id == currentNetwork?.id;
-
-                  return _buildNetworkItem(
-                    context,
-                    network: network,
-                    isSelected: isSelected,
-                    onTap: () async {
-                      final success = await controller.switchNetwork(network);
-                      if (success && context.mounted) {
-                        Navigator.pop(context);
-                        Get.snackbar(
-                          'Network Changed',
-                          'Switched to ${network.name}',
-                          snackPosition: SnackPosition.BOTTOM,
-                          backgroundColor: AppTheme.accentGreen,
-                          colorText: AppTheme.textPrimary,
-                          duration: const Duration(seconds: 2),
-                        );
-                      }
-                    },
-                  );
-                },
+                children: [
+                  if (mainnets.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.spacingL,
+                        vertical: AppTheme.spacingS,
+                      ),
+                      child: Text(
+                        'Mainnets',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: AppTheme.textSecondary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                    ...mainnets.map((n) => buildNetworkTile(n)),
+                  ],
+                  if (testnets.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        left: AppTheme.spacingL,
+                        right: AppTheme.spacingL,
+                        top: AppTheme.spacingM,
+                        bottom: AppTheme.spacingS,
+                      ),
+                      child: Text(
+                        'Testnets',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: AppTheme.textSecondary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                    ...testnets.map((n) => buildNetworkTile(n)),
+                  ],
+                ],
               );
             }),
           ),
@@ -216,7 +258,8 @@ class NetworkSelectorSheet extends StatelessWidget {
                     children: [
                       Text(
                         network.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
                               fontWeight: isSelected
                                   ? FontWeight.bold
                                   : FontWeight.w600,
@@ -234,11 +277,14 @@ class NetworkSelectorSheet extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: AppTheme.accentGreen.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusS,
+                            ),
                           ),
                           child: Text(
                             'TESTNET',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
                                   color: AppTheme.accentGreen,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 10,
@@ -254,12 +300,17 @@ class NetworkSelectorSheet extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryPurple.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                            color: AppTheme.primaryPurple.withValues(
+                              alpha: 0.2,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusS,
+                            ),
                           ),
                           child: Text(
                             'CUSTOM',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
                                   color: AppTheme.primaryPurple,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 10,
@@ -273,8 +324,8 @@ class NetworkSelectorSheet extends StatelessWidget {
                   Text(
                     'Chain ID: ${network.chainId}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textSecondary,
-                        ),
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
                 ],
               ),

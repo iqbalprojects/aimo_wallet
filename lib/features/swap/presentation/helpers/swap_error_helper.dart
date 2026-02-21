@@ -13,6 +13,7 @@ enum SwapErrorType {
   networkError,
   signingError,
   broadcastError,
+  liquidityError,
   unknown,
 }
 
@@ -124,6 +125,10 @@ class SwapErrorHelper {
       return SwapErrorType.broadcastError;
     }
 
+    if (_matchesPatterns(errorString, ['liquidity'])) {
+      return SwapErrorType.liquidityError;
+    }
+
     return SwapErrorType.unknown;
   }
 
@@ -162,6 +167,9 @@ class SwapErrorHelper {
       case SwapErrorType.broadcastError:
         return 'Failed to submit transaction. Please try again.';
 
+      case SwapErrorType.liquidityError:
+        return 'No liquidity available for this trade pair/amount.';
+
       case SwapErrorType.unknown:
         return 'An unexpected error occurred. Please try again.';
     }
@@ -184,7 +192,9 @@ class SwapErrorHelper {
     debugPrint('Type: ${classify(error).name}');
     debugPrint('Details: $sanitizedError');
     if (stackTrace != null) {
-      debugPrint('Stack: ${stackTrace.toString().split('\n').take(5).join('\n')}');
+      debugPrint(
+        'Stack: ${stackTrace.toString().split('\n').take(5).join('\n')}',
+      );
     }
     debugPrint('========================================');
   }
@@ -206,7 +216,8 @@ class SwapErrorHelper {
     // Remove potential addresses (keep first/last 6 chars)
     sanitized = sanitized.replaceAllMapped(
       RegExp(r'0x[a-fA-F0-9]{40}'),
-      (match) => '${match.group(0)!.substring(0, 8)}...${match.group(0)!.substring(38)}',
+      (match) =>
+          '${match.group(0)!.substring(0, 8)}...${match.group(0)!.substring(38)}',
     );
 
     return sanitized;

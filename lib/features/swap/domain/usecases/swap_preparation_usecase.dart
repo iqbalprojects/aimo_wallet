@@ -1,5 +1,7 @@
 import '../../../../core/blockchain/evm/erc20/erc20_service.dart';
+import '../../../../core/network/rpc_client.dart';
 import 'check_allowance_usecase.dart';
+import 'get_token_balance_usecase.dart';
 
 /// Result of swap preparation validation.
 ///
@@ -103,12 +105,15 @@ class SwapPreparationResult {
 class SwapPreparationUseCase {
   final Erc20Service _erc20Service;
   final CheckAllowanceUseCase _checkAllowanceUseCase;
+  final RpcClient _rpcClient;
 
   SwapPreparationUseCase({
     required Erc20Service erc20Service,
     required CheckAllowanceUseCase checkAllowanceUseCase,
-  })  : _erc20Service = erc20Service,
-        _checkAllowanceUseCase = checkAllowanceUseCase;
+    required RpcClient rpcClient,
+  }) : _erc20Service = erc20Service,
+       _checkAllowanceUseCase = checkAllowanceUseCase,
+       _rpcClient = rpcClient;
 
   /// Execute use case
   ///
@@ -131,15 +136,35 @@ class SwapPreparationUseCase {
     required String spenderAddress,
     required BigInt sellAmount,
   }) async {
+    final isNativeToken =
+        tokenAddress.toLowerCase() ==
+        GetTokenBalanceUseCase.nativeTokenAddress.toLowerCase();
+
     // Step 1: Check token balance
-    final balance = await _erc20Service.balanceOf(
-      contractAddress: tokenAddress,
-      walletAddress: walletAddress,
-    );
+    BigInt balance;
+    if (isNativeToken) {
+      balance = await _rpcClient.getBalance(walletAddress);
+    } else {
+      balance = await _erc20Service.balanceOf(
+        contractAddress: tokenAddress,
+        walletAddress: walletAddress,
+      );
+    }
 
     final hasEnoughBalance = balance >= sellAmount;
 
     // Step 2: Check allowance
+    // Native tokens do not use allowances (they use 'value' in transaction directly)
+    if (isNativeToken) {
+      return SwapPreparationResult(
+        hasEnoughBalance: hasEnoughBalance,
+        currentBalance: balance,
+        requiredAmount: sellAmount,
+        allowanceStatus: AllowanceStatus.sufficient,
+        currentAllowance: sellAmount, // mock sufficient allowance
+      );
+    }
+
     // Only check allowance if balance is sufficient
     // (optimization: skip if user can't swap anyway)
     final allowanceResult = await _checkAllowanceUseCase.call(

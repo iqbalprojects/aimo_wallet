@@ -11,14 +11,7 @@ import '../../features/transaction/presentation/pages/receive_screen.dart';
 import '../../features/wallet/presentation/pages/settings_screen.dart';
 import '../../features/swap/presentation/pages/swap_screen.dart';
 import '../../features/swap/presentation/controllers/swap_controller.dart';
-import '../../features/wallet/presentation/controllers/wallet_controller.dart';
-import '../../features/wallet/presentation/controllers/auth_controller.dart';
-import '../../features/network_switch/presentation/controllers/network_controller.dart';
-import '../../features/wallet/domain/usecases/create_new_wallet_usecase.dart';
-import '../../features/wallet/domain/usecases/unlock_wallet_usecase.dart';
-import '../../features/wallet/domain/usecases/get_current_address_usecase.dart';
-import '../crypto/wallet_engine.dart';
-import '../vault/secure_vault.dart';
+
 import 'app_routes.dart';
 
 /// App Pages
@@ -58,27 +51,10 @@ class AppPages {
     // Onboarding Screen - No bindings
     GetPage(name: AppRoutes.onboarding, page: () => const OnboardingScreen()),
 
-    // Create Wallet Screen - Binds WalletController with dependencies
+    // Create Wallet Screen - Uses controllers from service locator
     GetPage(
       name: AppRoutes.createWallet,
       page: () => const CreateWalletScreen(),
-      binding: BindingsBuilder(() {
-        // Initialize core dependencies
-        final walletEngine = WalletEngine();
-        final secureVault = SecureVault();
-
-        // Initialize use case
-        final createNewWalletUseCase = CreateNewWalletUseCase(
-          walletEngine: walletEngine,
-          secureVault: secureVault,
-        );
-
-        // Initialize controller with use case
-        Get.lazyPut<WalletController>(
-          () =>
-              WalletController(createNewWalletUseCase: createNewWalletUseCase),
-        );
-      }),
     ),
 
     // Backup Mnemonic Screen - Uses existing WalletController
@@ -93,48 +69,11 @@ class AppPages {
       page: () => const ConfirmMnemonicScreen(),
     ),
 
-    // Unlock Screen - Binds AuthController with dependencies
-    GetPage(
-      name: AppRoutes.unlock,
-      page: () => const UnlockScreen(),
-      binding: BindingsBuilder(() {
-        // Initialize core dependencies
-        final secureVault = SecureVault();
+    // Unlock Screen - Uses controllers from service locator
+    GetPage(name: AppRoutes.unlock, page: () => const UnlockScreen()),
 
-        // Initialize use case
-        final unlockWalletUseCase = UnlockWalletUseCase(
-          secureVault: secureVault,
-        );
-
-        // Initialize controller with use case
-        Get.lazyPut<AuthController>(
-          () => AuthController(unlockWalletUseCase: unlockWalletUseCase),
-        );
-      }),
-    ),
-
-    // Home Dashboard - Binds all main controllers with dependencies
-    GetPage(
-      name: AppRoutes.home,
-      page: () => const HomeDashboardScreen(),
-      binding: BindingsBuilder(() {
-        // Initialize core dependencies
-        final secureVault = SecureVault();
-
-        // Initialize use cases
-        final getCurrentAddressUseCase = GetCurrentAddressUseCase(
-          secureVault: secureVault,
-        );
-
-        // Initialize controllers with use cases
-        Get.lazyPut<WalletController>(
-          () => WalletController(
-            getCurrentAddressUseCase: getCurrentAddressUseCase,
-          ),
-        );
-        Get.lazyPut<NetworkController>(() => NetworkController());
-      }),
-    ),
+    // Home Dashboard - Uses controllers from service locator
+    GetPage(name: AppRoutes.home, page: () => const HomeDashboardScreen()),
 
     // Send Screen - Uses controllers from service locator
     GetPage(
@@ -146,23 +85,21 @@ class AppPages {
     // Receive Screen - Uses existing WalletController
     GetPage(name: AppRoutes.receive, page: () => const ReceiveScreen()),
 
-    // Settings Screen - Uses existing controllers
-    GetPage(
-      name: AppRoutes.settings,
-      page: () => const SettingsScreen(),
-      binding: BindingsBuilder(() {
-        Get.lazyPut<AuthController>(() => AuthController());
-      }),
-    ),
+    // Settings Screen - Uses controllers from service locator
+    GetPage(name: AppRoutes.settings, page: () => const SettingsScreen()),
 
     // Swap Screen - Binds SwapController
     GetPage(
       name: AppRoutes.swap,
       page: () => const SwapScreen(),
       binding: BindingsBuilder(() {
-        Get.lazyPut<SwapController>(() => SwapController());
-        Get.lazyPut<NetworkController>(() => NetworkController());
-        Get.lazyPut<AuthController>(() => AuthController());
+        // Only create SwapController if not already registered
+        if (!Get.isRegistered<SwapController>()) {
+          Get.lazyPut<SwapController>(
+            () => SwapController(),
+            fenix: true, // Keep alive and recreatable
+          );
+        }
       }),
     ),
   ];

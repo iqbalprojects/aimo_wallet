@@ -43,6 +43,12 @@ check_env_vars() {
         exit 1
     fi
     
+    if [ -z "$ZERO_X_API_KEY" ]; then
+        echo -e "${YELLOW}WARNING: ZERO_X_API_KEY not set - swap feature will not work${NC}"
+        echo "Get your API key from: https://dashboard.0x.org/"
+        echo "Set it with: export ZERO_X_API_KEY=your-key-here"
+    fi
+    
     echo -e "${GREEN}✓ Environment variables OK${NC}"
     echo ""
 }
@@ -80,7 +86,8 @@ build_android() {
         --obfuscate \
         --split-debug-info=build/app/outputs/symbols \
         --dart-define=ETHEREUM_RPC_URL=$ETHEREUM_RPC_URL \
-        --dart-define=SEPOLIA_RPC_URL=$SEPOLIA_RPC_URL
+        --dart-define=SEPOLIA_RPC_URL=$SEPOLIA_RPC_URL \
+        --dart-define=ZERO_X_API_KEY=$ZERO_X_API_KEY
     
     # Build App Bundle with obfuscation
     flutter build appbundle \
@@ -88,7 +95,8 @@ build_android() {
         --obfuscate \
         --split-debug-info=build/app/outputs/symbols \
         --dart-define=ETHEREUM_RPC_URL=$ETHEREUM_RPC_URL \
-        --dart-define=SEPOLIA_RPC_URL=$SEPOLIA_RPC_URL
+        --dart-define=SEPOLIA_RPC_URL=$SEPOLIA_RPC_URL \
+        --dart-define=ZERO_X_API_KEY=$ZERO_X_API_KEY
     
     echo -e "${GREEN}✓ Android build complete${NC}"
     echo ""
@@ -107,7 +115,8 @@ build_ios() {
         --obfuscate \
         --split-debug-info=build/ios/outputs/symbols \
         --dart-define=ETHEREUM_RPC_URL=$ETHEREUM_RPC_URL \
-        --dart-define=SEPOLIA_RPC_URL=$SEPOLIA_RPC_URL
+        --dart-define=SEPOLIA_RPC_URL=$SEPOLIA_RPC_URL \
+        --dart-define=ZERO_X_API_KEY=$ZERO_X_API_KEY
     
     echo -e "${GREEN}✓ iOS build complete${NC}"
     echo ""

@@ -6,9 +6,9 @@ import '../../../../core/vault/vault_exception.dart';
 import '../../../../core/routes/navigation_helper.dart';
 
 /// Auth Controller
-/// 
+///
 /// PRESENTATION LAYER - GetX Controller
-/// 
+///
 /// Responsibilities:
 /// - Manage authentication state (locked/unlocked)
 /// - Handle PIN operations (verify, change)
@@ -16,13 +16,13 @@ import '../../../../core/routes/navigation_helper.dart';
 /// - Implement auto-lock functionality
 /// - Track failed attempts and lockout
 /// - Lock when app goes to background
-/// 
+///
 /// SEPARATION OF CONCERNS:
 /// - NO crypto logic (delegated to domain layer)
 /// - NO mnemonic access (uses UnlockWalletUseCase)
 /// - Calls use cases for business logic
 /// - UI observes reactive state (Rx)
-/// 
+///
 /// Security Principles:
 /// - PIN never stored (only verified)
 /// - Mnemonic never stored (only verified via use case)
@@ -30,23 +30,23 @@ import '../../../../core/routes/navigation_helper.dart';
 /// - Lock on app background
 /// - Failed attempts tracked
 /// - Lockout after 5 failures
-/// 
+///
 /// Auto-Lock:
 /// - Configurable timeout (1, 5, 15, 30 minutes, never)
 /// - Timer resets on user activity
 /// - Locks when app goes to background
 /// - Navigates to unlock screen on lock
-/// 
+///
 /// Usage:
 /// ```dart
 /// final controller = Get.find<AuthController>();
-/// 
+///
 /// // Unlock wallet
 /// await controller.unlockWallet(pin);
-/// 
+///
 /// // Lock wallet
 /// controller.lockWallet();
-/// 
+///
 /// // Set auto-lock duration
 /// controller.setAutoLockDuration(Duration(minutes: 5));
 /// ```
@@ -56,15 +56,17 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   // TODO: Inject other use cases
   // final ChangePinUseCase _changePinUseCase;
 
-  AuthController({
-    UnlockWalletUseCase? unlockWalletUseCase,
-  }) {
+  AuthController({UnlockWalletUseCase? unlockWalletUseCase}) {
     _unlockWalletUseCase = unlockWalletUseCase;
   }
-  
+
   // Lazy getter for UnlockWalletUseCase
   UnlockWalletUseCase? get unlockWalletUseCase {
-    _unlockWalletUseCase ??= Get.find<UnlockWalletUseCase>();
+    try {
+      _unlockWalletUseCase ??= Get.find<UnlockWalletUseCase>();
+    } catch (e) {
+      print('⚠️ UnlockWalletUseCase not found in DI: $e');
+    }
     return _unlockWalletUseCase;
   }
 
@@ -135,7 +137,7 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     _checkBiometricAvailability();
     _loadBiometricSetting();
     _loadAutoLockDuration();
-    
+
     // Register as lifecycle observer for app state changes
     WidgetsBinding.instance.addObserver(this);
   }
@@ -145,42 +147,58 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     // Cancel timers
     _autoLockTimer?.cancel();
     _lockoutTimer?.cancel();
-    
+
     // Unregister lifecycle observer
     WidgetsBinding.instance.removeObserver(this);
-    
+
     super.onClose();
   }
 
   /// Handle app lifecycle changes
-  /// 
-  /// SECURITY: Lock wallet when app goes to background
+  ///
+  /// SECURITY: Lock wallet state when app goes to background.
+  /// Navigation to unlock screen happens on resume, not on pause,
+  /// to avoid destroying active screens (like swap).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
     switch (state) {
       case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-        // App going to background - lock wallet
+        // App going to background - lock wallet state only
+        // Do NOT navigate here - it destroys active screens
         if (isUnlocked) {
-          lockWallet();
+          _lockState();
         }
         break;
+      case AppLifecycleState.inactive:
+        // App is inactive (e.g., permission dialog, app switcher)
+        // Do NOT lock here - this fires during normal interactions
+        break;
       case AppLifecycleState.resumed:
-        // App coming to foreground - already locked
+        // App coming to foreground - check if locked
+        // Navigation happens here so active screens are preserved
+        if (isLocked && _walletAddress.value == null) {
+          // Wallet was locked while in background
+          // Navigate to unlock with returnResult so it pops back
+          // to the current screen on success
+          _navigateToUnlockIfNeeded();
+        }
         break;
       case AppLifecycleState.detached:
         // App being terminated
         break;
       case AppLifecycleState.hidden:
         // App hidden (iOS)
+        if (isUnlocked) {
+          _lockState();
+        }
         break;
     }
   }
 
   /// Check if biometric authentication is available
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls use case to check device capabilities
   /// - NO direct platform code here
@@ -227,18 +245,18 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   // ============================================================================
 
   /// Unlock wallet with PIN
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls UnlockWalletUseCase (domain layer)
   /// - Use case verifies PIN via SecureVault
   /// - Use case does NOT return mnemonic
   /// - Controller only manages UI state
-  /// 
+  ///
   /// Parameters:
   /// - pin: User's PIN
-  /// 
+  ///
   /// Returns: true if unlock successful, false otherwise
-  /// 
+  ///
   /// SECURITY:
   /// - Mnemonic never stored in controller
   /// - Only wallet address cached (public info)
@@ -315,15 +333,32 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// Lock wallet
-  /// 
+  /// Lock wallet (full lock with navigation)
+  ///
+  /// Use this for explicit user-initiated lock (e.g., settings button).
+  /// For auto-lock, use _lockState() which doesn't navigate.
+  ///
   /// SECURITY:
   /// - Clears wallet address from memory
   /// - Cancels auto-lock timer
   /// - Navigates to unlock screen
   /// - Clears navigation stack
   void lockWallet() {
-    // Update state
+    _lockState();
+    // Navigate to unlock screen (clears stack)
+    NavigationHelper.lockWallet();
+  }
+
+  /// Lock wallet state only (no navigation)
+  ///
+  /// Used by auto-lock and background lock to avoid destroying
+  /// active screens in the navigation stack.
+  ///
+  /// SECURITY:
+  /// - Clears wallet address from memory
+  /// - Cancels auto-lock timer
+  /// - Does NOT navigate
+  void _lockState() {
     _isLocked.value = true;
     _walletAddress.value = null;
     _errorMessage.value = null;
@@ -331,9 +366,19 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     // Cancel auto-lock timer
     _autoLockTimer?.cancel();
     _autoLockTimer = null;
+  }
 
-    // Navigate to unlock screen (clears stack)
-    NavigationHelper.lockWallet();
+  /// Navigate to unlock screen if wallet is locked
+  ///
+  /// Uses Get.toNamed with returnResult so the unlock screen
+  /// pops back to the current screen on success, instead of
+  /// replacing the entire navigation stack.
+  void _navigateToUnlockIfNeeded() {
+    // Only navigate if not already on unlock screen
+    final currentRoute = Get.currentRoute;
+    if (currentRoute == '/unlock') return;
+
+    Get.toNamed('/unlock', arguments: {'returnResult': true});
   }
 
   // ============================================================================
@@ -341,7 +386,7 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   // ============================================================================
 
   /// Start auto-lock timer
-  /// 
+  ///
   /// SECURITY:
   /// - Automatically locks wallet after configured duration
   /// - Timer resets on user activity (via resetAutoLockTimer)
@@ -357,15 +402,17 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     // Start new timer
     _autoLockTimer = Timer(_autoLockDuration.value!, () {
       if (isUnlocked) {
-        lockWallet();
+        // Use state lock + non-destructive navigation
+        _lockState();
+        _navigateToUnlockIfNeeded();
       }
     });
   }
 
   /// Reset auto-lock timer
-  /// 
+  ///
   /// Call this on user activity to reset the timer.
-  /// 
+  ///
   /// Usage:
   /// ```dart
   /// // In screens where user is active
@@ -378,10 +425,10 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   }
 
   /// Set auto-lock duration
-  /// 
+  ///
   /// Parameters:
   /// - duration: Auto-lock duration (null = never)
-  /// 
+  ///
   /// Options:
   /// - Duration(minutes: 1)
   /// - Duration(minutes: 5)
@@ -405,7 +452,7 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   // ============================================================================
 
   /// Start lockout after too many failed attempts
-  /// 
+  ///
   /// SECURITY:
   /// - Locks out user for 5 minutes after 5 failed attempts
   /// - Prevents brute force attacks
@@ -429,42 +476,42 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   // ============================================================================
 
   /// Verify PIN
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls UnlockWalletUseCase.verifyPinOnly (domain layer)
   /// - Use case checks PIN against encrypted storage
   /// - Controller tracks failed attempts
-  /// 
+  ///
   /// SECURITY:
   /// - PIN never stored
   /// - Failed attempts tracked
   /// - Lockout after too many failures
-  /// 
+  ///
   /// Parameters:
   /// - pin: PIN to verify
-  /// 
+  ///
   /// Returns: true if PIN correct, false otherwise
-  /// 
+  ///
   /// Note: This is an alias for unlockWallet for backward compatibility
   Future<bool> verifyPin(String pin) async {
     return await unlockWallet(pin);
   }
 
   /// Change PIN
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls ChangePinUseCase (domain layer)
   /// - Use case verifies old PIN
   /// - Use case re-encrypts mnemonic with new PIN
   /// - Use case updates storage
   /// - Controller only manages UI state
-  /// 
+  ///
   /// SECURITY:
   /// - Old PIN verified before change
   /// - Mnemonic re-encrypted with new PIN
   /// - Old PIN cleared from memory
   /// - New PIN cleared from memory
-  /// 
+  ///
   /// Parameters:
   /// - oldPin: Current PIN
   /// - newPin: New PIN
@@ -499,12 +546,12 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   // ============================================================================
 
   /// Toggle biometric authentication
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls use case to enable/disable biometric
   /// - Use case handles platform-specific code
   /// - Controller updates UI state
-  /// 
+  ///
   /// Parameters:
   /// - enabled: true to enable, false to disable
   Future<bool> toggleBiometric(bool enabled) async {
@@ -546,12 +593,12 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   }
 
   /// Authenticate with biometric
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls use case for biometric authentication
   /// - Use case handles platform-specific code
   /// - Returns success/failure
-  /// 
+  ///
   /// SECURITY:
   /// - Biometric is convenience only
   /// - Still requires PIN for sensitive operations

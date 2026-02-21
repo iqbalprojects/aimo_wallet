@@ -1,4 +1,5 @@
 import '../../../../core/blockchain/evm/erc20/erc20_service.dart';
+import '../../../../core/network/rpc_client.dart';
 
 /// Token balance result
 class TokenBalance {
@@ -28,10 +29,9 @@ class TokenBalance {
       // Less than 1 token
       final padded = str.padLeft(decimals, '0');
       final decimal = padded.substring(0, maxDecimals.clamp(0, decimals));
-      return '0.$decimal'.replaceAll(RegExp(r'0+$'), '').replaceAll(
-        RegExp(r'\.$'),
-        '',
-      );
+      return '0.$decimal'
+          .replaceAll(RegExp(r'0+$'), '')
+          .replaceAll(RegExp(r'\.$'), '');
     }
 
     // More than 1 token
@@ -109,6 +109,7 @@ class TokenBalance {
 /// ```
 class GetTokenBalanceUseCase {
   final Erc20Service _erc20Service;
+  final RpcClient _rpcClient;
 
   /// Special address representing native token (ETH, BNB, etc.)
   static const String nativeTokenAddress =
@@ -116,7 +117,9 @@ class GetTokenBalanceUseCase {
 
   GetTokenBalanceUseCase({
     required Erc20Service erc20Service,
-  }) : _erc20Service = erc20Service;
+    required RpcClient rpcClient,
+  }) : _erc20Service = erc20Service,
+       _rpcClient = rpcClient;
 
   /// Execute use case
   ///
@@ -148,10 +151,7 @@ class GetTokenBalanceUseCase {
       BigInt balance;
 
       if (isNativeToken) {
-        // For native token, we would need Web3Client to get balance
-        // For now, return zero - this should be implemented with Web3Client
-        // TODO: Implement native token balance fetching
-        balance = BigInt.zero;
+        balance = await _rpcClient.getBalance(walletAddress);
       } else {
         // For ERC20 tokens, use Erc20Service
         balance = await _erc20Service.balanceOf(
@@ -160,11 +160,7 @@ class GetTokenBalanceUseCase {
         );
       }
 
-      return TokenBalance(
-        raw: balance,
-        decimals: decimals,
-        symbol: symbol,
-      );
+      return TokenBalance(raw: balance, decimals: decimals, symbol: symbol);
     } on Erc20Exception {
       rethrow;
     } catch (e) {

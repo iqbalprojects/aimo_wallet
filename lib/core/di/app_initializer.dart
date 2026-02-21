@@ -1,17 +1,18 @@
 import 'package:get/get.dart';
 import 'service_locator.dart';
 import '../../features/wallet/presentation/controllers/wallet_controller.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// App Initializer
-/// 
+///
 /// Responsibility: Initialize app on startup.
 /// - Initialize dependency injection
 /// - Initialize WalletController
 /// - Check wallet existence
 /// - Set initial wallet state
-/// 
+///
 /// Requirements: 7.1, 7.5
-/// 
+///
 /// Usage:
 /// ```dart
 /// void main() async {
@@ -22,16 +23,23 @@ import '../../features/wallet/presentation/controllers/wallet_controller.dart';
 /// ```
 class AppInitializer {
   /// Initialize app
-  /// 
+  ///
   /// Call this in main() before runApp().
-  /// 
+  ///
   /// Steps:
   /// 1. Initialize dependency injection (register all services)
   /// 2. Initialize WalletController (check wallet existence)
   /// 3. Wait for initialization to complete
-  /// 
+  ///
   /// Requirements: 7.1, 7.5
   static Future<void> initialize() async {
+    // Step 0: Load environment variables
+    try {
+      await dotenv.load(fileName: ".env");
+    } catch (e) {
+      print('WARNING: Could not load .env file: $e');
+    }
+
     // Step 1: Initialize dependency injection
     // Registers all services, repositories, use cases, and controllers
     ServiceLocator.init();
@@ -50,7 +58,7 @@ class AppInitializer {
   }
 
   /// Wait for wallet initialization to complete
-  /// 
+  ///
   /// Polls wallet controller until initialization is complete.
   /// Timeout after 5 seconds to prevent infinite wait.
   static Future<void> _waitForWalletInitialization(
@@ -76,7 +84,7 @@ class AppInitializer {
   }
 
   /// Dispose app resources
-  /// 
+  ///
   /// Call this when app is closing or during testing cleanup.
   static void dispose() {
     ServiceLocator.dispose();

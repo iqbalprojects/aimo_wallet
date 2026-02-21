@@ -7,23 +7,23 @@ import '../../../../core/widgets/secure_text_field.dart';
 import '../controllers/auth_controller.dart';
 
 /// Unlock Screen
-/// 
+///
 /// User enters PIN to unlock wallet.
-/// 
+///
 /// Features:
 /// - Secure PIN input (obscured)
 /// - Biometric authentication button (placeholder)
 /// - Error state handling
 /// - Clean minimal layout
 /// - Loading state
-/// 
+///
 /// Flow:
 /// 1. User enters 6-digit PIN
 /// 2. Call AuthController.verifyPin(pin)
 /// 3. If successful -> Navigate to HomeDashboardScreen
 /// 4. If failed -> Show error message
 /// 5. Alternative: Use biometric authentication
-/// 
+///
 /// Controller Integration:
 /// - Uses AuthController for PIN verification
 /// - Uses NavigationHelper for navigation
@@ -85,8 +85,19 @@ class _UnlockScreenState extends State<UnlockScreen> {
       final success = await authController.unlockWallet(pin);
 
       if (success) {
-        // Unlock successful -> Navigate to home
-        NavigationHelper.navigateToHomeAfterUnlock();
+        // Check if we were navigated here expecting a result (e.g., from swap screen)
+        // If 'returnResult' argument is true, just pop back with result
+        // instead of replacing the entire navigation stack
+        final args = Get.arguments;
+        final shouldReturnResult = args is Map && args['returnResult'] == true;
+
+        if (shouldReturnResult) {
+          // Return to calling screen (e.g., swap) with success result
+          Get.back(result: true);
+        } else {
+          // Normal unlock flow -> Navigate to home (replaces entire stack)
+          NavigationHelper.navigateToHomeAfterUnlock();
+        }
       } else {
         // Unlock failed -> Show error
         setState(() {
@@ -98,7 +109,15 @@ class _UnlockScreenState extends State<UnlockScreen> {
     } else {
       // Fallback: Controller not initialized (placeholder mode)
       await Future.delayed(const Duration(milliseconds: 800));
-      NavigationHelper.navigateToHomeAfterUnlock();
+
+      final args = Get.arguments;
+      final shouldReturnResult = args is Map && args['returnResult'] == true;
+
+      if (shouldReturnResult) {
+        Get.back(result: true);
+      } else {
+        NavigationHelper.navigateToHomeAfterUnlock();
+      }
     }
   }
 
@@ -114,13 +133,21 @@ class _UnlockScreenState extends State<UnlockScreen> {
       final success = await authController.authenticateWithBiometric();
 
       if (success) {
-        // Biometric success -> Navigate to home
-        NavigationHelper.navigateToHomeAfterUnlock();
+        // Check if we were navigated here expecting a result
+        final args = Get.arguments;
+        final shouldReturnResult = args is Map && args['returnResult'] == true;
+
+        if (shouldReturnResult) {
+          Get.back(result: true);
+        } else {
+          NavigationHelper.navigateToHomeAfterUnlock();
+        }
       } else {
         // Biometric failed -> Show error
         setState(() {
           _isLoading = false;
-          _errorText = authController.errorMessage ?? 'Biometric authentication failed';
+          _errorText =
+              authController.errorMessage ?? 'Biometric authentication failed';
         });
       }
     } else {
@@ -145,9 +172,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
+        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -184,8 +209,8 @@ class _UnlockScreenState extends State<UnlockScreen> {
                   Text(
                     'Welcome Back',
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: AppTheme.spacingM),
 
@@ -193,8 +218,8 @@ class _UnlockScreenState extends State<UnlockScreen> {
                   Text(
                     'Enter your PIN to unlock your wallet',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppTheme.textSecondary,
-                        ),
+                      color: AppTheme.textSecondary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppTheme.spacingXXL),
@@ -248,10 +273,8 @@ class _UnlockScreenState extends State<UnlockScreen> {
                         ),
                         child: Text(
                           'OR',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppTheme.textTertiary,
-                                  ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textTertiary),
                         ),
                       ),
                       const Expanded(child: Divider(color: AppTheme.divider)),
@@ -304,10 +327,8 @@ class _UnlockScreenState extends State<UnlockScreen> {
                         Expanded(
                           child: Text(
                             'Your wallet is encrypted and secured. Your PIN never leaves this device.',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: AppTheme.textSecondary,
-                                    ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary),
                           ),
                         ),
                       ],

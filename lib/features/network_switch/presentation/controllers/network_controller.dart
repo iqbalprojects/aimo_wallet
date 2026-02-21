@@ -1,9 +1,18 @@
 import 'package:get/get.dart';
 import '../../../../core/network/rpc_client.dart';
+import '../../../../core/blockchain/evm/swap/zero_x_api_service.dart';
+import '../../../../core/blockchain/evm/erc20/erc20_service.dart';
+import '../../../../core/blockchain/evm/gas/gas_price_oracle_service.dart';
 import '../../../transaction/domain/usecases/get_nonce_usecase.dart';
 import '../../../transaction/domain/usecases/estimate_gas_usecase.dart';
 import '../../../transaction/domain/usecases/broadcast_transaction_usecase.dart';
 import '../../../wallet/domain/usecases/get_balance_usecase.dart';
+import '../../../wallet/presentation/controllers/wallet_controller.dart';
+import '../../../swap/domain/usecases/check_allowance_usecase.dart';
+import '../../../swap/domain/usecases/approve_token_usecase.dart';
+import '../../../swap/domain/usecases/swap_preparation_usecase.dart';
+import '../../../swap/domain/usecases/get_swap_quote_usecase.dart';
+import '../../../swap/domain/usecases/get_token_balance_usecase.dart';
 import '../../data/network_storage_service.dart';
 
 /// Network Controller
@@ -130,6 +139,15 @@ class NetworkController extends GetxController {
           isTestnet: false,
         ),
         Network(
+          id: 'base-mainnet',
+          name: 'Base Mainnet',
+          chainId: 8453,
+          rpcUrl: 'https://mainnet.base.org',
+          symbol: 'ETH',
+          explorerUrl: 'https://basescan.org',
+          isTestnet: false,
+        ),
+        Network(
           id: 'bsc-mainnet',
           name: 'BNB Smart Chain',
           chainId: 56,
@@ -145,15 +163,6 @@ class NetworkController extends GetxController {
           rpcUrl: 'https://arb1.arbitrum.io/rpc',
           symbol: 'ETH',
           explorerUrl: 'https://arbiscan.io',
-          isTestnet: false,
-        ),
-        Network(
-          id: 'base-mainnet',
-          name: 'Base',
-          chainId: 8453,
-          rpcUrl: 'https://mainnet.base.org',
-          symbol: 'ETH',
-          explorerUrl: 'https://basescan.org',
           isTestnet: false,
         ),
         Network(
@@ -217,6 +226,10 @@ class NetworkController extends GetxController {
       );
       _currentNetwork.value =
           sepoliaNetwork ?? (_networks.isNotEmpty ? _networks.first : null);
+    } finally {
+      // CRITICAL: Refresh RPC client after initial load
+      // Ensures services don't cache fallback/stale network states during async init
+      _refreshRpcClient();
     }
   }
 
@@ -248,6 +261,14 @@ class NetworkController extends GetxController {
       // This ensures transactions are sent to the correct blockchain
       _refreshRpcClient();
 
+      // IMPORTANT: Trigger wallet balance refresh so UI updates to new network's balance
+      try {
+        final walletController = Get.find<WalletController>();
+        walletController.refreshBalance();
+      } catch (_) {
+        // WalletController might not be initialized yet, ignore
+      }
+
       return true;
     } catch (e) {
       _errorMessage.value = 'Failed to switch network: ${e.toString()}';
@@ -257,10 +278,11 @@ class NetworkController extends GetxController {
     }
   }
 
-  /// Refresh RPC Client after network change
+  /// Refresh RPC Client and swap services after network change
   ///
-  /// CRITICAL: This ensures RpcClient uses the new network's RPC URL.
-  /// Without this, transactions would be sent to the wrong blockchain!
+  /// CRITICAL: This ensures RpcClient, ZeroXApiService, and ERC20 service
+  /// all use the new network's RPC URL and chainId.
+  /// Without this, transactions and quotes would go to the wrong blockchain!
   void _refreshRpcClient() {
     try {
       // Delete old RPC client instance
@@ -282,10 +304,52 @@ class NetworkController extends GetxController {
         Get.delete<BroadcastTransactionUseCase>(force: true);
       } catch (_) {}
 
+      // IMPORTANT: Also refresh swap-related services that are network-specific
+      // ZeroXApiService needs the new chainId for 0x API v2
+      // Erc20Service and GasPriceOracleService need the new RPC URL
+      _refreshSwapServices();
+
       print('RPC client and dependent use cases refreshed for network switch');
     } catch (e) {
       print('Warning: Failed to refresh RPC client: $e');
     }
+  }
+
+  /// Refresh swap-related services after network change.
+  ///
+  /// These services are chain-specific and must be recreated when the
+  /// user switches networks, so they use the correct chainId and RPC URL.
+  ///
+  /// NOTE: Services are registered WITHOUT tags in service_locator.dart,
+  /// so we must delete them WITHOUT tags here too (using actual types).
+  void _refreshSwapServices() {
+    // Delete core swap services (will be lazily recreated with new chainId/RPC)
+    try {
+      Get.delete<ZeroXApiService>(force: true);
+    } catch (_) {}
+    try {
+      Get.delete<Erc20Service>(force: true);
+    } catch (_) {}
+    try {
+      Get.delete<GasPriceOracleService>(force: true);
+    } catch (_) {}
+
+    // Delete swap use cases that hold references to the old services
+    try {
+      Get.delete<CheckAllowanceUseCase>(force: true);
+    } catch (_) {}
+    try {
+      Get.delete<ApproveTokenUseCase>(force: true);
+    } catch (_) {}
+    try {
+      Get.delete<SwapPreparationUseCase>(force: true);
+    } catch (_) {}
+    try {
+      Get.delete<GetSwapQuoteUseCase>(force: true);
+    } catch (_) {}
+    try {
+      Get.delete<GetTokenBalanceUseCase>(force: true);
+    } catch (_) {}
   }
 
   /// Add custom network

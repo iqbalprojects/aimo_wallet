@@ -9,10 +9,13 @@ import '../../domain/usecases/execute_swap_usecase.dart';
 import '../helpers/swap_error_helper.dart';
 import '../../../transaction/domain/entities/transaction.dart';
 import '../../../wallet/presentation/controllers/auth_controller.dart';
+import '../../../wallet/presentation/controllers/wallet_controller.dart';
 import '../../../network_switch/presentation/controllers/network_controller.dart';
 import '../../../transaction/domain/usecases/get_nonce_usecase.dart';
+import '../../../transaction/domain/usecases/estimate_gas_usecase.dart';
 import '../../../transaction/domain/usecases/sign_transaction_usecase.dart';
 import '../../../transaction/domain/usecases/broadcast_transaction_usecase.dart';
+import '../../../../core/blockchain/evm/gas/gas_price_oracle_service.dart';
 
 /// Swap Controller
 ///
@@ -66,113 +69,85 @@ import '../../../transaction/domain/usecases/broadcast_transaction_usecase.dart'
 /// });
 /// ```
 class SwapController extends GetxController {
-  // Use cases (lazy loaded to avoid circular dependency)
-  GetSwapQuoteUseCase? _getSwapQuoteUseCase;
-  SwapPreparationUseCase? _swapPreparationUseCase;
-  CheckAllowanceUseCase? _checkAllowanceUseCase;
-  ApproveTokenUseCase? _approveTokenUseCase;
-  ExecuteSwapUseCase? _executeSwapUseCase;
-  GetNonceUseCase? _getNonceUseCase;
-  SignTransactionUseCase? _signTransactionUseCase;
-  BroadcastTransactionUseCase? _broadcastTransactionUseCase;
+  // Services (fetched lazily via getters)
   AuthController? _authController;
   NetworkController? _networkController;
+  GasPriceOracleService? _gasPriceOracleService;
 
   SwapController({
-    GetSwapQuoteUseCase? getSwapQuoteUseCase,
-    SwapPreparationUseCase? swapPreparationUseCase,
-    CheckAllowanceUseCase? checkAllowanceUseCase,
-    ApproveTokenUseCase? approveTokenUseCase,
-    ExecuteSwapUseCase? executeSwapUseCase,
-    GetNonceUseCase? getNonceUseCase,
-    SignTransactionUseCase? signTransactionUseCase,
-    BroadcastTransactionUseCase? broadcastTransactionUseCase,
     AuthController? authController,
     NetworkController? networkController,
+    GasPriceOracleService? gasPriceOracleService,
   }) {
-    _getSwapQuoteUseCase = getSwapQuoteUseCase;
-    _swapPreparationUseCase = swapPreparationUseCase;
-    _checkAllowanceUseCase = checkAllowanceUseCase;
-    _approveTokenUseCase = approveTokenUseCase;
-    _executeSwapUseCase = executeSwapUseCase;
-    _getNonceUseCase = getNonceUseCase;
-    _signTransactionUseCase = signTransactionUseCase;
-    _broadcastTransactionUseCase = broadcastTransactionUseCase;
     _authController = authController;
     _networkController = networkController;
+    _gasPriceOracleService = gasPriceOracleService;
   }
 
   // Lazy getters for dependencies
+  // We use Get.find directly rather than caching so they get properly reinitialized on network change
   GetSwapQuoteUseCase? get getSwapQuoteUseCase {
     try {
-      _getSwapQuoteUseCase ??= Get.find<GetSwapQuoteUseCase>();
+      return Get.find<GetSwapQuoteUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _getSwapQuoteUseCase;
   }
 
   SwapPreparationUseCase? get swapPreparationUseCase {
     try {
-      _swapPreparationUseCase ??= Get.find<SwapPreparationUseCase>();
+      return Get.find<SwapPreparationUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _swapPreparationUseCase;
   }
 
   CheckAllowanceUseCase? get checkAllowanceUseCase {
     try {
-      _checkAllowanceUseCase ??= Get.find<CheckAllowanceUseCase>();
+      return Get.find<CheckAllowanceUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _checkAllowanceUseCase;
   }
 
   ApproveTokenUseCase? get approveTokenUseCase {
     try {
-      _approveTokenUseCase ??= Get.find<ApproveTokenUseCase>();
+      return Get.find<ApproveTokenUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _approveTokenUseCase;
   }
 
   ExecuteSwapUseCase? get executeSwapUseCase {
     try {
-      _executeSwapUseCase ??= Get.find<ExecuteSwapUseCase>();
+      return Get.find<ExecuteSwapUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _executeSwapUseCase;
   }
 
   GetNonceUseCase? get getNonceUseCase {
     try {
-      _getNonceUseCase ??= Get.find<GetNonceUseCase>();
+      return Get.find<GetNonceUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _getNonceUseCase;
   }
 
   SignTransactionUseCase? get signTransactionUseCase {
     try {
-      _signTransactionUseCase ??= Get.find<SignTransactionUseCase>();
+      return Get.find<SignTransactionUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _signTransactionUseCase;
   }
 
   BroadcastTransactionUseCase? get broadcastTransactionUseCase {
     try {
-      _broadcastTransactionUseCase ??= Get.find<BroadcastTransactionUseCase>();
+      return Get.find<BroadcastTransactionUseCase>();
     } catch (e) {
-      // Use case not registered yet
+      return null;
     }
-    return _broadcastTransactionUseCase;
   }
 
   AuthController? get authController {
@@ -191,6 +166,15 @@ class SwapController extends GetxController {
       // Controller not registered yet
     }
     return _networkController;
+  }
+
+  GasPriceOracleService? get gasPriceOracleService {
+    try {
+      _gasPriceOracleService ??= Get.find<GasPriceOracleService>();
+    } catch (e) {
+      // Service not registered yet
+    }
+    return _gasPriceOracleService;
   }
 
   // ============================================================================
@@ -288,8 +272,8 @@ class SwapController extends GetxController {
     _currentStep.value = SwapStep.gettingQuote;
 
     try {
-      final walletAddress = authController?.walletAddress;
-      if (walletAddress == null) {
+      final walletAddress = Get.find<WalletController>().currentAddress.value;
+      if (walletAddress.isEmpty) {
         _errorMessage.value = 'Wallet not connected';
         return null;
       }
@@ -345,8 +329,8 @@ class SwapController extends GetxController {
     _currentStep.value = SwapStep.preparing;
 
     try {
-      final walletAddress = authController?.walletAddress;
-      if (walletAddress == null) {
+      final walletAddress = Get.find<WalletController>().currentAddress.value;
+      if (walletAddress.isEmpty) {
         _errorMessage.value = 'Wallet not connected';
         return null;
       }
@@ -462,8 +446,8 @@ class SwapController extends GetxController {
     _currentStep.value = SwapStep.signingApproval;
 
     try {
-      final walletAddress = authController?.walletAddress;
-      if (walletAddress == null) {
+      final walletAddress = Get.find<WalletController>().currentAddress.value;
+      if (walletAddress.isEmpty) {
         _errorMessage.value = 'Wallet not connected';
         return null;
       }
@@ -482,18 +466,46 @@ class SwapController extends GetxController {
       }
       final nonce = await nonceUseCase.call(address: walletAddress);
 
-      // TODO: Get gas price from gas estimation service in production
-      // For now, use a reasonable fallback (20 Gwei)
-      final gasPrice = BigInt.from(20000000000);
+      // Fetch dynamic gas price from oracle, fallback to 20 Gwei
+      BigInt gasPrice;
+      try {
+        final oracle = gasPriceOracleService;
+        if (oracle != null) {
+          gasPrice = await oracle.getRecommendedGasPrice(GasSpeed.standard);
+        } else {
+          gasPrice = BigInt.from(20000000000); // 20 Gwei fallback
+        }
+      } catch (_) {
+        gasPrice = BigInt.from(20000000000); // 20 Gwei fallback
+      }
 
-      // Build EvmTransaction
+      // Estimate gas dynamically instead of hardcoding.
+      // Use EstimateGasUseCase if available, fallback to safe 150_000.
+      BigInt gasLimit;
+      try {
+        final estimateUseCase = Get.find<EstimateGasUseCase>();
+        final gasEstimate = await estimateUseCase.call(
+          from: walletAddress,
+          to: tokenAddress,
+          data: transaction.data != null
+              ? '0x${_bytesToHex(transaction.data!)}'
+              : null,
+          value: BigInt.zero,
+        );
+        // Add 20% buffer on top of the estimate (which already includes 10% buffer)
+        gasLimit = (gasEstimate.gasLimit * BigInt.from(12)) ~/ BigInt.from(10);
+      } catch (_) {
+        gasLimit = BigInt.from(150000); // Safe fallback for approve
+      }
+
+      // Build EvmTransaction with dynamically estimated gas
       final evmTransaction = EvmTransaction(
         to: tokenAddress,
         data: transaction.data != null
             ? '0x${_bytesToHex(transaction.data!)}'
             : null,
         value: BigInt.zero,
-        gasLimit: BigInt.from(100000), // Standard approve gas
+        gasLimit: gasLimit,
         gasPrice: gasPrice,
         chainId: network.chainId,
         nonce: nonce,
@@ -525,7 +537,8 @@ class SwapController extends GetxController {
       // Clear approval transaction after use
       _approveTransaction.value = null;
 
-      // Automatically re-check allowance after approval
+      // Wait 3 seconds for tx to propagate before rechecking allowance
+      await Future.delayed(const Duration(seconds: 3));
       await _recheckAllowance();
 
       return result.transactionHash;
@@ -551,8 +564,8 @@ class SwapController extends GetxController {
     final sellToken = _sellTokenAddress.value;
     if (quote == null || sellToken == null) return;
 
-    final walletAddress = authController?.walletAddress;
-    if (walletAddress == null) return;
+    final walletAddress = Get.find<WalletController>().currentAddress.value;
+    if (walletAddress.isEmpty) return;
 
     final useCase = swapPreparationUseCase;
     if (useCase == null) return;
@@ -600,8 +613,8 @@ class SwapController extends GetxController {
     _currentStep.value = SwapStep.executing;
 
     try {
-      final walletAddress = authController?.walletAddress;
-      if (walletAddress == null) {
+      final walletAddress = Get.find<WalletController>().currentAddress.value;
+      if (walletAddress.isEmpty) {
         _errorMessage.value = 'Wallet not connected';
         return null;
       }
