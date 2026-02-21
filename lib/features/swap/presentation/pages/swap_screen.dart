@@ -487,6 +487,15 @@ class _SwapScreenState extends State<SwapScreen> {
                       // Switch network
                       await _networkController.switchNetwork(network);
 
+                      if (mounted) {
+                        setState(() {
+                          final tokens = _availableTokens;
+                          _sellToken = tokens.isNotEmpty ? tokens[0] : null;
+                          _buyToken = tokens.length > 1 ? tokens[1] : null;
+                        });
+                        _fetchSellTokenBalance();
+                      }
+
                       Get.snackbar(
                         'Network Switched',
                         'Successfully switched to ${network.name}',
@@ -838,6 +847,7 @@ class _SwapScreenState extends State<SwapScreen> {
             _sellToken = _buyToken;
             _buyToken = temp;
           });
+          _fetchSellTokenBalance();
           _amountController.clear();
           _stopQuoteExpiryTimer();
           _swapController.reset();
@@ -1358,6 +1368,9 @@ class _SwapScreenState extends State<SwapScreen> {
               _buyToken = token;
             }
           });
+          if (type == 'sell') {
+            _fetchSellTokenBalance();
+          }
           // Clear quote when tokens change
           _swapController.reset();
           Get.back();
@@ -1537,6 +1550,7 @@ class _SwapScreenState extends State<SwapScreen> {
       // Clear state after successful swap
       _swapController.reset();
       _amountController.clear();
+      _fetchSellTokenBalance();
     }
   }
 
