@@ -51,6 +51,7 @@ class _SwapScreenState extends State<SwapScreen> {
       TextEditingController();
   Timer? _quoteExpiryTimer;
   int _quoteSecondsRemaining = 0;
+  Timer? _debounceTimer;
 
   // Per-network token balance state
   String _sellTokenBalance = '...';
@@ -295,10 +296,31 @@ class _SwapScreenState extends State<SwapScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _amountController.dispose();
     _customSlippageController.dispose();
     _quoteExpiryTimer?.cancel();
     super.dispose();
+  }
+
+  void _onInputsChanged() {
+    _swapController.reset();
+    _stopQuoteExpiryTimer();
+    _debounceTimer?.cancel();
+
+    if (_sellToken == null || _buyToken == null) return;
+
+    final value = _amountController.text.trim();
+    if (value.isEmpty) return;
+
+    final parsed = double.tryParse(value);
+    if (parsed == null || parsed <= 0) return;
+
+    _debounceTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        _getQuote();
+      }
+    });
   }
 
   /// Start 30-second quote expiry countdown
@@ -658,8 +680,7 @@ class _SwapScreenState extends State<SwapScreen> {
                         contentPadding: EdgeInsets.zero,
                       ),
                       onChanged: (value) {
-                        // Clear quote when amount changes
-                        _swapController.reset();
+                        _onInputsChanged();
                       },
                     ),
                     const SizedBox(height: 2),
@@ -848,9 +869,7 @@ class _SwapScreenState extends State<SwapScreen> {
             _buyToken = temp;
           });
           _fetchSellTokenBalance();
-          _amountController.clear();
-          _stopQuoteExpiryTimer();
-          _swapController.reset();
+          _onInputsChanged();
         },
         borderRadius: BorderRadius.circular(20),
         child: Container(
@@ -935,6 +954,7 @@ class _SwapScreenState extends State<SwapScreen> {
         });
         // Controller hook for slippage selection
         _swapController.clearError();
+        _onInputsChanged();
       },
       borderRadius: BorderRadius.circular(AppTheme.radiusS),
       child: Container(
@@ -1010,8 +1030,7 @@ class _SwapScreenState extends State<SwapScreen> {
                   setState(() {
                     _selectedSlippage = parsed / 100;
                   });
-                  _swapController.reset();
-                  _stopQuoteExpiryTimer();
+                  _onInputsChanged();
                 }
               },
             ),
@@ -1248,9 +1267,22 @@ class _SwapScreenState extends State<SwapScreen> {
     bool enabled;
     VoidCallback? onTap;
 
-    if (!hasQuote) {
+    final amountText = _amountController.text.trim();
+    final parsed = double.tryParse(amountText);
+    final hasValidAmount =
+        amountText.isNotEmpty && parsed != null && parsed > 0;
+
+    if (!hasValidAmount) {
+      label = 'Enter Amount';
+      enabled = false;
+      onTap = null;
+    } else if (isLoading) {
+      label = 'Fetching Quote...';
+      enabled = false;
+      onTap = null;
+    } else if (!hasQuote) {
       label = 'Get Quote';
-      enabled = !isLoading;
+      enabled = true; // Allow manual retry
       onTap = () => _getQuote();
     } else if (needsApproval) {
       label = 'Waiting for Approval...';
@@ -1371,8 +1403,7 @@ class _SwapScreenState extends State<SwapScreen> {
           if (type == 'sell') {
             _fetchSellTokenBalance();
           }
-          // Clear quote when tokens change
-          _swapController.reset();
+          _onInputsChanged();
           Get.back();
         },
       ),
@@ -1389,6 +1420,7 @@ class _SwapScreenState extends State<SwapScreen> {
   /// - Token approval (signing)
   /// - Swap execution (signing)
   Future<void> _getQuote() async {
+    _debounceTimer?.cancel();
     // Validate inputs
     if (_sellToken == null || _buyToken == null) {
       Get.snackbar(
