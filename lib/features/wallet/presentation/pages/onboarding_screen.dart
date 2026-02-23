@@ -5,13 +5,13 @@ import '../../../../core/routes/navigation_helper.dart';
 import '../../../../core/widgets/primary_button.dart';
 
 /// Onboarding Screen
-/// 
+///
 /// Welcome screen explaining wallet features.
-/// 
+///
 /// Actions:
 /// - Create New Wallet -> Navigate to CreateWalletScreen
 /// - Import Wallet -> Navigate to ImportWalletScreen (future)
-/// 
+///
 /// Controller Integration:
 /// - No controller needed (navigation only)
 class OnboardingScreen extends StatelessWidget {
@@ -21,9 +21,7 @@ class OnboardingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
+        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(AppTheme.spacingL),
@@ -60,8 +58,8 @@ class OnboardingScreen extends StatelessWidget {
                   'Your secure, non-custodial wallet for\nEthereum and EVM-compatible chains',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: AppTheme.spacingXXL),
 
@@ -102,12 +100,7 @@ class OnboardingScreen extends StatelessWidget {
                 // Import Wallet Button
                 OutlinedButton(
                   onPressed: () {
-                    // TODO: Navigate to import wallet screen
-                    Get.snackbar(
-                      'Coming Soon',
-                      'Import wallet feature will be available soon',
-                      snackPosition: SnackPosition.BOTTOM,
-                    );
+                    Get.toNamed('/import-wallet');
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.textPrimary,
@@ -119,10 +112,7 @@ class OnboardingScreen extends StatelessWidget {
                   ),
                   child: const Text(
                     'Import Existing Wallet',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -148,24 +138,15 @@ class OnboardingScreen extends StatelessWidget {
             color: AppTheme.surfaceDark,
             borderRadius: BorderRadius.circular(AppTheme.radiusM),
           ),
-          child: Icon(
-            icon,
-            color: AppTheme.primaryPurple,
-          ),
+          child: Icon(icon, color: AppTheme.primaryPurple),
         ),
         const SizedBox(width: AppTheme.spacingM),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Text(
-                description,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              Text(description, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
         ),

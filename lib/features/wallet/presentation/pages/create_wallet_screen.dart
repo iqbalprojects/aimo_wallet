@@ -7,24 +7,24 @@ import '../../../../core/widgets/secure_text_field.dart';
 import '../controllers/wallet_controller.dart';
 
 /// Create Wallet Screen
-/// 
+///
 /// Entry point for wallet creation flow.
-/// 
+///
 /// Flow:
 /// 1. User enters PIN (6-8 digits)
 /// 2. User confirms PIN
 /// 3. Call WalletController.createWallet(pin)
 /// 4. Navigate to BackupMnemonicScreen with mnemonic
-/// 
+///
 /// Options:
 /// - Create New Wallet: Generate new 24-word mnemonic
 /// - Import Existing Wallet: Import from existing mnemonic (future)
-/// 
+///
 /// Controller Integration:
 /// - Uses WalletController for wallet creation
 /// - Observes loading and error states
 /// - Passes mnemonic to backup screen via navigation
-/// 
+///
 /// Security:
 /// - PIN validated (6-8 digits)
 /// - PIN confirmation required
@@ -118,7 +118,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
             NavigationHelper.navigateToBackup(mnemonic: mnemonic);
           },
         );
-        
+
         // Check for errors
         if (controller.errorMessage != null) {
           setState(() {
@@ -145,27 +145,15 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
   }
 
   void _handleImportExisting() {
-    // TODO: Navigate to import mnemonic screen
-    Get.snackbar(
-      'Import Wallet',
-      'Import functionality coming soon',
-      snackPosition: SnackPosition.BOTTOM,
-      duration: const Duration(seconds: 2),
-      backgroundColor: AppTheme.surfaceDark,
-      colorText: AppTheme.textPrimary,
-    );
+    Get.toNamed('/import-wallet');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Wallet'),
-      ),
+      appBar: AppBar(title: const Text('Create Wallet')),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppTheme.backgroundGradient,
-        ),
+        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppTheme.spacingL),
@@ -203,8 +191,8 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
                 Text(
                   'Secure Your Wallet',
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingM),
@@ -213,8 +201,8 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
                 Text(
                   'Create a PIN to secure your wallet. You\'ll need this PIN to access your wallet.',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
+                    color: AppTheme.textSecondary,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingXXL),
@@ -302,10 +290,8 @@ class _CreateWalletScreenState extends State<CreateWalletScreen> {
                       Expanded(
                         child: Text(
                           'Your PIN encrypts your wallet. Never share your PIN or recovery phrase with anyone.',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppTheme.textSecondary,
-                                  ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.textSecondary),
                         ),
                       ),
                     ],

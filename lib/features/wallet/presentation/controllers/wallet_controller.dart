@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import '../../domain/usecases/create_new_wallet_usecase.dart';
+import '../../domain/usecases/import_new_wallet_usecase.dart';
 import '../../domain/usecases/get_current_address_usecase.dart';
 import '../../domain/usecases/get_balance_usecase.dart';
 import '../../../../core/vault/vault_exception.dart';
@@ -49,14 +50,17 @@ import '../../../../core/network/rpc_client_impl.dart';
 class WalletController extends GetxController {
   // Use cases (injected via dependency injection)
   final CreateNewWalletUseCase? _createNewWalletUseCase;
+  final ImportNewWalletUseCase? _importNewWalletUseCase;
   final GetCurrentAddressUseCase? _getCurrentAddressUseCase;
   final GetBalanceUseCase? _getBalanceUseCase;
 
   WalletController({
     CreateNewWalletUseCase? createNewWalletUseCase,
+    ImportNewWalletUseCase? importNewWalletUseCase,
     GetCurrentAddressUseCase? getCurrentAddressUseCase,
     GetBalanceUseCase? getBalanceUseCase,
   }) : _createNewWalletUseCase = createNewWalletUseCase,
+       _importNewWalletUseCase = importNewWalletUseCase,
        _getCurrentAddressUseCase = getCurrentAddressUseCase,
        _getBalanceUseCase = getBalanceUseCase;
 
@@ -254,17 +258,43 @@ class WalletController extends GetxController {
     _errorMessage.value = null;
 
     try {
-      // TODO: Call use case
-      // final address = await _importWalletUseCase(mnemonic, pin);
-      // _currentAddress.value = address;
+      final useCase = _importNewWalletUseCase;
+      if (useCase != null) {
+        // Call use case
+        final result = await useCase.call(mnemonic: mnemonic, pin: pin);
 
-      // Placeholder
-      await Future.delayed(const Duration(seconds: 2));
-      _currentAddress.value = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
-      _hasWallet.value = true;
-      return true;
+        // Update state
+        _hasWallet.value = true;
+        _currentAddress.value = result.address;
+
+        // Refresh balance after importing
+        await refreshBalance();
+
+        return true;
+      } else {
+        throw Exception('ImportNewWalletUseCase not initialized');
+      }
+    } on VaultException catch (e) {
+      // Handle vault-specific errors
+      switch (e.type) {
+        case VaultExceptionType.vaultNotEmpty:
+          _errorMessage.value = 'Wallet already exists';
+          break;
+        case VaultExceptionType.invalidPin:
+          _errorMessage.value = 'Invalid PIN format';
+          break;
+        case VaultExceptionType.encryptionFailed:
+          _errorMessage.value = 'Failed to encrypt wallet';
+          break;
+        case VaultExceptionType.storageFailed:
+          _errorMessage.value = 'Failed to store wallet';
+          break;
+        default:
+          _errorMessage.value = e.message;
+      }
+      return false;
     } catch (e) {
-      _errorMessage.value = 'Failed to import wallet: ${e.toString()}';
+      _errorMessage.value = e.toString().replaceFirst('Exception: ', '');
       return false;
     } finally {
       _isLoading.value = false;

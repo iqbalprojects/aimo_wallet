@@ -1,35 +1,36 @@
+import '../../../../core/vault/secure_vault.dart';
+import '../../../../core/vault/vault_exception.dart';
 import '../entities/wallet_error.dart';
-import '../repositories/wallet_repository.dart';
 
 /// Export Mnemonic Use Case
-/// 
+///
 /// Responsibility: Export mnemonic for backup.
 /// - Require PIN authentication
 /// - Decrypt mnemonic
 /// - Return mnemonic for display
 /// - Clear mnemonic from memory after use
-/// 
+///
 /// Security: Requires authentication, clears sensitive data after use
 class ExportMnemonicUseCase {
-  final WalletRepository repository;
+  final SecureVault secureVault;
 
-  ExportMnemonicUseCase({required this.repository});
+  ExportMnemonicUseCase({required this.secureVault});
 
   /// Export mnemonic with PIN authentication
-  /// 
+  ///
   /// Requirements: 11.4, 12.5
-  /// 
+  ///
   /// Parameters:
   /// - pin: User's PIN for authentication
-  /// 
+  ///
   /// Returns: Decrypted mnemonic phrase
-  /// 
+  ///
   /// Throws:
   /// - WalletError.walletNotFound: If no wallet exists
   /// - WalletError.invalidPinFormat: If PIN format is invalid
   /// - WalletError.wrongPin: If PIN is incorrect
   /// - WalletError.decryptionFailure: If decryption fails
-  /// 
+  ///
   /// Security:
   /// - Requires PIN authentication before export
   /// - Caller must clear mnemonic from memory after use
@@ -44,7 +45,7 @@ class ExportMnemonicUseCase {
     }
 
     // Check if wallet exists
-    final hasWallet = await repository.hasWallet();
+    final hasWallet = await secureVault.hasWallet();
     if (!hasWallet) {
       throw WalletError(
         WalletErrorType.walletNotFound,
@@ -52,13 +53,23 @@ class ExportMnemonicUseCase {
       );
     }
 
-    // Delegate to repository which handles:
-    // - Retrieving encrypted mnemonic
-    // - Deriving decryption key from PIN
-    // - Decrypting mnemonic
-    // - Returning mnemonic for display
-    // Note: Caller must clear mnemonic from memory after use
-    return await repository.exportMnemonic(pin);
+    try {
+      return await secureVault.retrieveMnemonic(pin);
+    } on VaultException catch (e) {
+      if (e.type == VaultExceptionType.decryptionFailed ||
+          e.type == VaultExceptionType.invalidPin) {
+        throw WalletError(WalletErrorType.wrongPin, 'Incorrect PIN');
+      }
+      throw WalletError(
+        WalletErrorType.decryptionFailure,
+        'Failed to decrypt wallet: ${e.message}',
+      );
+    } catch (e) {
+      throw WalletError(
+        WalletErrorType.decryptionFailure,
+        'Unexpected error during decryption',
+      );
+    }
   }
 
   /// Validate PIN format

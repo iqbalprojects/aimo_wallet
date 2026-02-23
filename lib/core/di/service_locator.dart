@@ -27,6 +27,7 @@ import '../../features/wallet/domain/usecases/save_wallet_usecase.dart';
 import '../../features/wallet/domain/usecases/import_wallet_usecase.dart';
 import '../../features/wallet/domain/usecases/unlock_wallet_usecase.dart';
 import '../../features/wallet/domain/usecases/get_wallet_address_usecase.dart';
+import '../../features/wallet/domain/usecases/import_new_wallet_usecase.dart';
 import '../../features/wallet/domain/usecases/delete_wallet_usecase.dart';
 import '../../features/wallet/domain/usecases/export_mnemonic_usecase.dart';
 import '../../features/wallet/domain/usecases/verify_backup_usecase.dart';
@@ -284,7 +285,7 @@ class ServiceLocator {
 
     // Export mnemonic use case
     Get.lazyPut<ExportMnemonicUseCase>(
-      () => ExportMnemonicUseCase(repository: Get.find<WalletRepository>()),
+      () => ExportMnemonicUseCase(secureVault: Get.find<SecureVault>()),
     );
 
     // Verify backup use case
@@ -295,6 +296,14 @@ class ServiceLocator {
     // Create new wallet use case (refactored)
     Get.lazyPut<CreateNewWalletUseCase>(
       () => CreateNewWalletUseCase(
+        walletEngine: Get.find<WalletEngine>(),
+        secureVault: Get.find<SecureVault>(),
+      ),
+    );
+
+    // Import new wallet use case (refactored)
+    Get.lazyPut<ImportNewWalletUseCase>(
+      () => ImportNewWalletUseCase(
         walletEngine: Get.find<WalletEngine>(),
         secureVault: Get.find<SecureVault>(),
       ),
@@ -445,6 +454,7 @@ class ServiceLocator {
     Get.lazyPut<WalletController>(
       () => WalletController(
         createNewWalletUseCase: Get.find<CreateNewWalletUseCase>(),
+        importNewWalletUseCase: Get.find<ImportNewWalletUseCase>(),
         getCurrentAddressUseCase: Get.find<GetCurrentAddressUseCase>(),
         getBalanceUseCase: Get.find<GetBalanceUseCase>(),
       ),

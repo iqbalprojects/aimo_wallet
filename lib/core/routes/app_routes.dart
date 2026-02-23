@@ -14,6 +14,7 @@ class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
   static const String createWallet = '/create-wallet';
+  static const String importWallet = '/import-wallet';
   static const String backupMnemonic = '/backup-mnemonic';
   static const String confirmMnemonic = '/confirm-mnemonic';
   static const String unlock = '/unlock';

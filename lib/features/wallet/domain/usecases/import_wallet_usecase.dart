@@ -5,14 +5,14 @@ import '../../../../core/crypto/bip39_service.dart';
 import '../../../../core/crypto/key_derivation_service.dart';
 
 /// Import Wallet Use Case
-/// 
+///
 /// Responsibility: Orchestrate wallet import flow.
 /// - Check if wallet already exists (enforce single wallet constraint)
 /// - Validate imported mnemonic
 /// - Normalize mnemonic
 /// - Derive wallet address
 /// - Return normalized mnemonic and address for confirmation
-/// 
+///
 /// Security: Validates mnemonic before storage, enforces single wallet constraint
 class ImportWalletUseCase {
   final WalletRepository repository;
@@ -27,14 +27,14 @@ class ImportWalletUseCase {
 
   /// Import wallet from mnemonic
   /// Returns wallet credentials (normalized mnemonic and address) for user confirmation
-  /// 
+  ///
   /// Requirements: 2.1, 2.2, 2.3, 2.4, 7.3
-  /// 
+  ///
   /// Parameters:
   /// - mnemonic: 24-word mnemonic phrase to import
-  /// 
+  ///
   /// Returns: WalletCredentials with normalized mnemonic and derived address
-  /// 
+  ///
   /// Throws:
   /// - WalletError.walletAlreadyExists: If wallet already exists on device
   /// - WalletError.invalidMnemonicLength: If mnemonic is not 24 words
@@ -55,12 +55,12 @@ class ImportWalletUseCase {
 
     // Validate mnemonic (word count, word list, checksum)
     final words = normalizedMnemonic.split(' ');
-    
-    // Check word count (must be exactly 24 words)
-    if (words.length != 24) {
+
+    // Check word count (must be 12, 15, 18, 21, or 24 words)
+    if (![12, 15, 18, 21, 24].contains(words.length)) {
       throw WalletError(
         WalletErrorType.invalidMnemonicLength,
-        'Mnemonic must be exactly 24 words, got ${words.length}',
+        'Mnemonic must be 12, 15, 18, 21, or 24 words, got ${words.length}',
       );
     }
 
@@ -76,7 +76,9 @@ class ImportWalletUseCase {
     }
 
     // Derive wallet address from normalized mnemonic
-    final walletKeys = keyDerivationService.deriveWalletKeys(normalizedMnemonic);
+    final walletKeys = keyDerivationService.deriveWalletKeys(
+      normalizedMnemonic,
+    );
 
     // Return normalized mnemonic and address for confirmation
     // Encryption happens after user confirms (via SaveWalletUseCase)

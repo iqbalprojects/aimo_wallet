@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import '../../features/wallet/presentation/pages/splash_screen.dart';
 import '../../features/wallet/presentation/pages/onboarding_screen.dart';
 import '../../features/wallet/presentation/pages/create_wallet_screen.dart';
+import '../../features/wallet/presentation/pages/import_wallet_screen.dart';
 import '../../features/wallet/presentation/pages/backup_mnemonic_screen.dart';
 import '../../features/wallet/presentation/pages/confirm_mnemonic_screen.dart';
 import '../../features/wallet/presentation/pages/unlock_screen.dart';
@@ -55,6 +56,12 @@ class AppPages {
     GetPage(
       name: AppRoutes.createWallet,
       page: () => const CreateWalletScreen(),
+    ),
+
+    // Import Wallet Screen - Uses existing WalletController
+    GetPage(
+      name: AppRoutes.importWallet,
+      page: () => const ImportWalletScreen(),
     ),
 
     // Backup Mnemonic Screen - Uses existing WalletController
