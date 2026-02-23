@@ -109,7 +109,7 @@ class BroadcastTransactionUseCase {
     } on OutOfGasException catch (e) {
       print('   ❌ ERROR: Out of gas - $e');
       rethrow;
-    } on TransactionAlreadyKnownException catch (e) {
+    } on TransactionAlreadyKnownException {
       // Transaction already in mempool, return existing hash
       print('   ⚠️  Transaction already known (already in mempool)');
       return BroadcastResult(
