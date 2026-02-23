@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 import 'dart:async';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/widgets.dart'; // Keep widgets.dart for WidgetsBindingObserver
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../domain/usecases/unlock_wallet_usecase.dart';
 import '../../../../core/vault/vault_exception.dart';
 import '../../../../core/routes/navigation_helper.dart';
@@ -121,6 +123,13 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   String? get walletAddress => _walletAddress.value;
 
   // ============================================================================
+  // GETx STATE VARIABLES
+  // ============================================================================
+
+  final _localAuth = LocalAuthentication();
+  FlutterSecureStorage get _storage => Get.find<FlutterSecureStorage>();
+
+  // ============================================================================
   // AUTO-LOCK TIMER
   // ============================================================================
 
@@ -204,12 +213,9 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   /// - NO direct platform code here
   Future<void> _checkBiometricAvailability() async {
     try {
-      // TODO: Call use case
-      // final available = await _checkBiometricUseCase();
-      // _biometricAvailable.value = available;
-
-      // Placeholder
-      _biometricAvailable.value = true;
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      _biometricAvailable.value = canCheck && isSupported;
     } catch (e) {
       _biometricAvailable.value = false;
     }
@@ -218,12 +224,8 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   /// Load biometric setting from storage
   Future<void> _loadBiometricSetting() async {
     try {
-      // TODO: Call use case to get setting
-      // final enabled = await _getBiometricSettingUseCase();
-      // _biometricEnabled.value = enabled;
-
-      // Placeholder
-      _biometricEnabled.value = false;
+      final setting = await _storage.read(key: 'biometric_enabled');
+      _biometricEnabled.value = setting == 'true';
     } catch (e) {
       _biometricEnabled.value = false;
     }
@@ -565,27 +567,28 @@ class AuthController extends GetxController with WidgetsBindingObserver {
 
     try {
       if (enabled) {
-        // TODO: Call use case to enable biometric
-        // final success = await _enableBiometricUseCase();
-        // if (success) {
-        //   _biometricEnabled.value = true;
-        //   return true;
-        // }
-
-        // Placeholder
-        await Future.delayed(const Duration(milliseconds: 500));
-        _biometricEnabled.value = true;
-        return true;
+        final success = await _localAuth.authenticate(
+          localizedReason: 'Enable Biometric Authentication',
+          options: const AuthenticationOptions(
+            stickyAuth: true,
+            biometricOnly: true,
+          ),
+        );
+        if (success) {
+          await _storage.write(key: 'biometric_enabled', value: 'true');
+          _biometricEnabled.value = true;
+          return true;
+        } else {
+          _errorMessage.value = 'Biometric authentication failed';
+          return false;
+        }
       } else {
-        // TODO: Call use case to disable biometric
-        // await _disableBiometricUseCase();
-
-        // Placeholder
+        await _storage.write(key: 'biometric_enabled', value: 'false');
         _biometricEnabled.value = false;
         return true;
       }
     } catch (e) {
-      _errorMessage.value = 'Failed to toggle biometric';
+      _errorMessage.value = 'Failed to toggle biometric: $e';
       return false;
     } finally {
       _isLoading.value = false;
@@ -603,6 +606,13 @@ class AuthController extends GetxController with WidgetsBindingObserver {
   /// - Biometric is convenience only
   /// - Still requires PIN for sensitive operations
   Future<bool> authenticateWithBiometric() async {
+    // If it's currently false, Double-check the storage.
+    // This happens if the user clicked the button faster than
+    // onInit()'s async _loadBiometricSetting completed, or if it failed.
+    if (!_biometricEnabled.value) {
+      await _loadBiometricSetting();
+    }
+
     if (!_biometricEnabled.value) {
       _errorMessage.value = 'Biometric not enabled';
       return false;
@@ -612,15 +622,25 @@ class AuthController extends GetxController with WidgetsBindingObserver {
     _errorMessage.value = null;
 
     try {
-      // TODO: Call use case
-      // final success = await _authenticateWithBiometricUseCase();
-      // return success;
+      final success = await _localAuth.authenticate(
+        localizedReason: 'Authenticate to unlock wallet',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
+        ),
+      );
 
-      // Placeholder
-      await Future.delayed(const Duration(seconds: 1));
-      return true;
+      if (success) {
+        _isLocked.value = false;
+        _failedAttempts.value = 0;
+        _startAutoLockTimer(); // Changed from _resetActivityTimer() to _startAutoLockTimer()
+        return true;
+      } else {
+        _errorMessage.value = 'Biometric authentication failed';
+        return false;
+      }
     } catch (e) {
-      _errorMessage.value = 'Biometric authentication failed';
+      _errorMessage.value = 'Biometric authentication error: $e';
       return false;
     } finally {
       _isLoading.value = false;

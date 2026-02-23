@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../controllers/wallet_settings_controller.dart';
+import '../controllers/auth_controller.dart';
 
 /// Settings Screen
 ///
@@ -31,8 +32,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Placeholder state (in production, get from controller)
-  bool _biometricEnabled = false;
+  AuthController get _authController => Get.find<AuthController>();
+
   String _autoLockDuration = '5 minutes';
   final String _currentNetwork = 'Ethereum Mainnet';
 
@@ -97,11 +98,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _handleToggleBiometric(bool value) {
-    setState(() {
-      _biometricEnabled = value;
-    });
-    // TODO: Call controller.toggleBiometric(value)
+  void _handleToggleBiometric(bool value) async {
+    final success = await _authController.toggleBiometric(value);
+    if (!success && _authController.errorMessage != null && mounted) {
+      Get.snackbar(
+        'Error',
+        _authController.errorMessage!,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
   }
 
   void _handleSwitchNetwork() {
@@ -426,14 +433,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: _autoLockDuration,
                 onTap: _handleAutoLockDuration,
               ),
-              _buildSettingsTile(
-                title: 'Biometric Authentication',
-                icon: Icons.fingerprint,
-                trailing: Switch(
-                  value: _biometricEnabled,
-                  onChanged: _handleToggleBiometric,
-                  activeColor: AppTheme.primaryPurple,
-                ),
+              Obx(
+                () => _authController.biometricAvailable
+                    ? _buildSettingsTile(
+                        title: 'Biometric Authentication',
+                        icon: Icons.fingerprint,
+                        trailing: Switch(
+                          value: _authController.biometricEnabled,
+                          onChanged: _handleToggleBiometric,
+                          activeColor: AppTheme.primaryPurple,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ]),
             const SizedBox(height: AppTheme.spacingXL),
