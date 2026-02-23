@@ -39,6 +39,9 @@ class SwapQuoteModel {
   /// Example: "0.0032" means 0.32% price impact.
   final String? estimatedPriceImpact;
 
+  /// Permit2 EIP-712 data for off-chain signature.
+  final Map<String, dynamic>? permit2Eip712;
+
   SwapQuoteModel({
     required this.to,
     required this.data,
@@ -50,6 +53,7 @@ class SwapQuoteModel {
     required this.sellAmount,
     this.minBuyAmount,
     this.estimatedPriceImpact,
+    this.permit2Eip712,
   });
 
   /// Parses SwapQuoteModel from JSON response.
@@ -76,7 +80,8 @@ class SwapQuoteModel {
   ///   "buyAmount": "1000000000000000000",
   ///   "sellAmount": "500000000",
   ///   "minBuyAmount": "990000000000000000",
-  ///   "estimatedPriceImpact": "0.0032"
+  ///   "estimatedPriceImpact": "0.0032",
+  ///   "permit2": { "eip712": { ... } }
   /// }
   /// ```
   factory SwapQuoteModel.fromJson(Map<String, dynamic> json) {
@@ -147,6 +152,13 @@ class SwapQuoteModel {
         transaction['gasPrice']?.toString() ??
         '0';
 
+    // Parse permit2.eip712 if it exists
+    Map<String, dynamic>? permit2Eip712;
+    final permit2 = json['permit2'] as Map<String, dynamic>?;
+    if (permit2 != null) {
+      permit2Eip712 = permit2['eip712'] as Map<String, dynamic>?;
+    }
+
     return SwapQuoteModel(
       to: transaction['to'] as String,
       data: transaction['data'] as String,
@@ -158,6 +170,7 @@ class SwapQuoteModel {
       sellAmount: json['sellAmount'] as String,
       minBuyAmount: json['minBuyAmount'] as String?,
       estimatedPriceImpact: json['estimatedPriceImpact'] as String?,
+      permit2Eip712: permit2Eip712,
     );
   }
 

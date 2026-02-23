@@ -172,11 +172,11 @@ class ServiceLocator {
           final currentNetwork = networkController.currentNetwork;
 
           if (currentNetwork == null) {
-            // Fallback to Sepolia for testing if no network selected
-            print('WARNING: No network selected, defaulting to Sepolia');
+            // Fallback to Mainnet for testing if no network selected
+            print('WARNING: No network selected, defaulting to Mainnet');
             return RpcClientImpl(
               rpcUrl:
-                  'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
+                  'https://mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
             );
           }
 
@@ -186,11 +186,10 @@ class ServiceLocator {
           );
           return RpcClientImpl(rpcUrl: currentNetwork.rpcUrl);
         } catch (e) {
-          // Fallback if NetworkController not ready
-          print('ERROR: Failed to get network, defaulting to Sepolia: $e');
+          // Ultimate fallback if NetworkController is not injectible yet
           return RpcClientImpl(
             rpcUrl:
-                'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
+                'https://mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
           );
         }
       },
@@ -351,7 +350,7 @@ class ServiceLocator {
       final currentNetwork = networkController.currentNetwork;
       final rpcUrl =
           currentNetwork?.rpcUrl ??
-          'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28';
+          'https://mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28';
       final web3Client = Web3Client(rpcUrl, http.Client());
       return Erc20Service(web3Client);
     }, fenix: true);
@@ -362,7 +361,7 @@ class ServiceLocator {
       final currentNetwork = networkController.currentNetwork;
       final rpcUrl =
           currentNetwork?.rpcUrl ??
-          'https://sepolia.infura.io/v3/363def80155a4bda9db9a2203db6ca28';
+          'https://mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28';
       final web3Client = Web3Client(rpcUrl, http.Client());
       return GasPriceOracleService(web3Client: web3Client);
     }, fenix: true);

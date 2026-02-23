@@ -172,23 +172,25 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    _buildTokenItem(
-                      context,
-                      symbol: 'ETH',
-                      name: 'Ethereum',
-                      balance: '1.234',
-                      usdValue: '2,468.00',
-                      change24h: '+5.2%',
-                      isPositive: true,
+                    Obx(
+                      () => _buildTokenItem(
+                        context,
+                        symbol: 'ETH',
+                        name: 'Ethereum',
+                        balance: _walletController.balance,
+                        usdValue: _walletController.balanceUsd,
+                        change24h: '+0.0%',
+                        isPositive: true,
+                      ),
                     ),
                     const SizedBox(height: AppTheme.spacingM),
                     _buildTokenItem(
                       context,
                       symbol: 'USDT',
                       name: 'Tether USD',
-                      balance: '1,000.00',
-                      usdValue: '1,000.00',
-                      change24h: '+0.1%',
+                      balance: '0.00',
+                      usdValue: '0.00',
+                      change24h: '+0.0%',
                       isPositive: true,
                     ),
                     const SizedBox(height: AppTheme.spacingM),
@@ -196,9 +198,9 @@ class HomeDashboardScreen extends StatelessWidget {
                       context,
                       symbol: 'DAI',
                       name: 'Dai Stablecoin',
-                      balance: '500.00',
-                      usdValue: '500.00',
-                      change24h: '-0.2%',
+                      balance: '0.00',
+                      usdValue: '0.00',
+                      change24h: '-0.0%',
                       isPositive: false,
                     ),
                     const SizedBox(height: AppTheme.spacingM),
@@ -260,7 +262,7 @@ class HomeDashboardScreen extends StatelessWidget {
               Obx(() {
                 final network = _networkController.currentNetwork;
                 return Text(
-                  network?.name ?? 'No Network',
+                  network?.name ?? 'All Networks',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),

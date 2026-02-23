@@ -133,7 +133,8 @@ class NetworkController extends GetxController {
           id: 'polygon-mainnet',
           name: 'Polygon Mainnet',
           chainId: 137,
-          rpcUrl: 'https://polygon-rpc.com',
+          rpcUrl:
+              'https://polygon-mainnet.infura.io/v3/363def80155a4bda9db9a2203db6ca28',
           symbol: 'MATIC',
           explorerUrl: 'https://polygonscan.com',
           isTestnet: false,
@@ -151,7 +152,7 @@ class NetworkController extends GetxController {
           id: 'bsc-mainnet',
           name: 'BNB Smart Chain',
           chainId: 56,
-          rpcUrl: 'https://bsc-dataseed.binance.org',
+          rpcUrl: 'https://bsc-rpc.publicnode.com',
           symbol: 'BNB',
           explorerUrl: 'https://bscscan.com',
           isTestnet: false,
@@ -206,26 +207,26 @@ class NetworkController extends GetxController {
         }
       }
 
-      // Fallback: Default to Sepolia Testnet for testing
-      // Find Sepolia network
-      final sepoliaNetwork = _networks.firstWhereOrNull(
-        (n) => n.id == 'ethereum-sepolia',
+      // Fallback: Default to Ethereum Mainnet for testing
+      // Find Mainnet network
+      final mainnetNetwork = _networks.firstWhereOrNull(
+        (n) => n.id == 'ethereum-mainnet',
       );
-      if (sepoliaNetwork != null) {
-        _currentNetwork.value = sepoliaNetwork;
+      if (mainnetNetwork != null) {
+        _currentNetwork.value = mainnetNetwork;
         // Save as default
-        await _storageService.saveCurrentNetwork(sepoliaNetwork.id);
+        await _storageService.saveCurrentNetwork(mainnetNetwork.id);
       } else {
         // Ultimate fallback: First network
         _currentNetwork.value = _networks.isNotEmpty ? _networks.first : null;
       }
     } catch (e) {
-      // Fallback on error: Try Sepolia first
-      final sepoliaNetwork = _networks.firstWhereOrNull(
-        (n) => n.id == 'ethereum-sepolia',
+      // Fallback on error: Try Mainnet first
+      final mainnetNetwork = _networks.firstWhereOrNull(
+        (n) => n.id == 'ethereum-mainnet',
       );
       _currentNetwork.value =
-          sepoliaNetwork ?? (_networks.isNotEmpty ? _networks.first : null);
+          mainnetNetwork ?? (_networks.isNotEmpty ? _networks.first : null);
     } finally {
       // CRITICAL: Refresh RPC client after initial load
       // Ensures services don't cache fallback/stale network states during async init
@@ -246,7 +247,7 @@ class NetworkController extends GetxController {
   ///
   /// Parameters:
   /// - network: Network to switch to
-  Future<bool> switchNetwork(Network network) async {
+  Future<bool> switchNetwork(Network? network) async {
     _isLoading.value = true;
     _errorMessage.value = null;
 
@@ -255,7 +256,12 @@ class NetworkController extends GetxController {
       _currentNetwork.value = network;
 
       // Save to storage for persistence
-      await _storageService.saveCurrentNetwork(network.id);
+      if (network != null) {
+        await _storageService.saveCurrentNetwork(network.id);
+      } else {
+        await _storageService
+            .clearCurrentNetwork(); // Assuming this is possible? Let's check storageService.
+      }
 
       // CRITICAL: Refresh RPC Client to use new network
       // This ensures transactions are sent to the correct blockchain

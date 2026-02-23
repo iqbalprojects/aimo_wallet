@@ -422,7 +422,7 @@ class _SwapScreenState extends State<SwapScreen> {
               Obx(() {
                 final network = _networkController.currentNetwork;
                 return Text(
-                  network?.name ?? 'No Network',
+                  network?.name ?? 'All Networks',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),

@@ -39,6 +39,27 @@ class EvmTransaction {
     this.data,
   });
 
+  /// Create a copy with optionally changed fields
+  EvmTransaction copyWith({
+    String? to,
+    BigInt? value,
+    BigInt? gasPrice,
+    BigInt? gasLimit,
+    int? nonce,
+    int? chainId,
+    String? data,
+  }) {
+    return EvmTransaction(
+      to: to ?? this.to,
+      value: value ?? this.value,
+      gasPrice: gasPrice ?? this.gasPrice,
+      gasLimit: gasLimit ?? this.gasLimit,
+      nonce: nonce ?? this.nonce,
+      chainId: chainId ?? this.chainId,
+      data: data ?? this.data,
+    );
+  }
+
   /// Convert to web3dart Transaction
   Transaction toWeb3Transaction() {
     return Transaction(

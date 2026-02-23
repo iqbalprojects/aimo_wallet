@@ -84,7 +84,8 @@ class Erc20Service {
       return (result[0] as BigInt);
     } on Erc20Exception {
       rethrow;
-    } catch (e) {
+    } catch (e, st) {
+      print('Erc20Service.balanceOf Error: $e\nStack: $st');
       throw Erc20Exception(
         'Failed to get token balance',
         details: e.toString(),

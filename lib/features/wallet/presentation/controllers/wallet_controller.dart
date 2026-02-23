@@ -3,35 +3,37 @@ import '../../domain/usecases/create_new_wallet_usecase.dart';
 import '../../domain/usecases/get_current_address_usecase.dart';
 import '../../domain/usecases/get_balance_usecase.dart';
 import '../../../../core/vault/vault_exception.dart';
+import '../../../network_switch/presentation/controllers/network_controller.dart';
+import '../../../../core/network/rpc_client_impl.dart';
 
 /// Wallet Controller (REFACTORED)
-/// 
+///
 /// PRESENTATION LAYER - GetX Controller
-/// 
+///
 /// CLEAN ARCHITECTURE COMPLIANCE:
 /// ✅ NO crypto logic (delegated to domain layer)
 /// ✅ NO mnemonic storage (passed via callback only)
 /// ✅ NO private key storage (never touches private keys)
 /// ✅ Calls use cases for business logic
 /// ✅ UI observes reactive state (Rx)
-/// 
+///
 /// SECURITY PRINCIPLES:
 /// ✅ Address is public info (safe to cache)
 /// ✅ Balance is public info (safe to cache)
 /// ✅ Mnemonic NEVER stored in controller
 /// ✅ Private keys NEVER stored in controller
 /// ✅ All sensitive operations via use cases
-/// 
+///
 /// Responsibilities:
 /// - Expose reactive state for UI
 /// - Coordinate wallet operations via use cases
 /// - Manage wallet lifecycle (create, import, backup)
 /// - Provide wallet information (address, balance)
-/// 
+///
 /// Usage:
 /// ```dart
 /// final controller = Get.find<WalletController>();
-/// 
+///
 /// // Create wallet with callback
 /// await controller.createWallet(
 ///   pin: pin,
@@ -40,7 +42,7 @@ import '../../../../core/vault/vault_exception.dart';
 ///     NavigationHelper.navigateToBackup(mnemonic: mnemonic);
 ///   },
 /// );
-/// 
+///
 /// // Get address (reactive)
 /// Obx(() => Text(controller.currentAddress.value));
 /// ```
@@ -54,16 +56,16 @@ class WalletController extends GetxController {
     CreateNewWalletUseCase? createNewWalletUseCase,
     GetCurrentAddressUseCase? getCurrentAddressUseCase,
     GetBalanceUseCase? getBalanceUseCase,
-  })  : _createNewWalletUseCase = createNewWalletUseCase,
-        _getCurrentAddressUseCase = getCurrentAddressUseCase,
-        _getBalanceUseCase = getBalanceUseCase;
+  }) : _createNewWalletUseCase = createNewWalletUseCase,
+       _getCurrentAddressUseCase = getCurrentAddressUseCase,
+       _getBalanceUseCase = getBalanceUseCase;
 
   // ============================================================================
   // REACTIVE STATE (Observable by UI)
   // ============================================================================
 
   /// Current wallet address (public info, safe to cache)
-  /// 
+  ///
   /// SECURITY: Address is public information
   /// - Safe to display in UI
   /// - Safe to cache in memory
@@ -109,9 +111,9 @@ class WalletController extends GetxController {
   }
 
   /// Initialize wallet state
-  /// 
+  ///
   /// Checks if wallet exists and loads address if available.
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls GetCurrentAddressUseCase (domain layer)
   /// - Use case checks vault for wallet
@@ -125,11 +127,11 @@ class WalletController extends GetxController {
       if (useCase != null) {
         try {
           final address = await useCase.call();
-          
+
           // Wallet exists
           _hasWallet.value = true;
           _currentAddress.value = address;
-          
+
           // Load balance
           await refreshBalance();
         } on VaultException catch (e) {
@@ -160,23 +162,23 @@ class WalletController extends GetxController {
   // ============================================================================
 
   /// Create new wallet
-  /// 
+  ///
   /// CLEAN ARCHITECTURE:
   /// - Calls CreateNewWalletUseCase (domain layer)
   /// - Use case generates mnemonic via WalletEngine
   /// - Use case stores encrypted mnemonic in SecureVault
   /// - Mnemonic returned via callback ONLY
   /// - Controller NEVER stores mnemonic
-  /// 
+  ///
   /// SECURITY:
   /// - Mnemonic passed to callback immediately
   /// - Caller must handle mnemonic securely
   /// - Controller does not retain mnemonic
-  /// 
+  ///
   /// Parameters:
   /// - pin: User's PIN for encryption
   /// - onSuccess: Callback with mnemonic and address
-  /// 
+  ///
   /// Usage:
   /// ```dart
   /// await controller.createWallet(
@@ -237,13 +239,13 @@ class WalletController extends GetxController {
   }
 
   /// Import existing wallet
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls ImportWalletUseCase (domain layer)
   /// - Use case validates mnemonic
   /// - Use case stores encrypted mnemonic
   /// - Controller updates UI state
-  /// 
+  ///
   /// Parameters:
   /// - mnemonic: 24-word mnemonic phrase
   /// - pin: User's PIN for encryption
@@ -270,7 +272,7 @@ class WalletController extends GetxController {
   }
 
   /// Refresh wallet balance
-  /// 
+  ///
   /// SEPARATION OF CONCERNS:
   /// - Calls GetBalanceUseCase (domain layer)
   /// - Use case queries blockchain via RPC
@@ -278,16 +280,71 @@ class WalletController extends GetxController {
   Future<void> refreshBalance() async {
     if (_currentAddress.value.isEmpty) return;
 
+    // Reset balance to indicate loading state for flawless UI transition
+    _balance.value = '...';
+    _balanceUsd.value = '...';
+    _isLoading.value = true;
+
     try {
-      final useCase = _getBalanceUseCase;
+      final networkController = Get.find<NetworkController>();
+
+      // If "All Networks" is active (currentNetwork == null)
+      if (networkController.currentNetwork == null) {
+        double totalBalanceEth = 0.0;
+        double totalBalanceUsd = 0.0;
+        final ethPrice = 2000.0; // Placeholder
+
+        // Only query mainnets to avoid testnet fake ETH from inflating true sum
+        final mainnets = networkController.networks.where((n) => !n.isTestnet);
+
+        for (final network in mainnets) {
+          try {
+            final rpcClient = RpcClientImpl(rpcUrl: network.rpcUrl);
+            final useCase = GetBalanceUseCase(rpcClient: rpcClient);
+            final balanceResult = await useCase.call(
+              address: _currentAddress.value,
+            );
+            final balanceValue =
+                double.tryParse(balanceResult.balanceEth) ?? 0.0;
+            totalBalanceEth += balanceValue;
+          } catch (e) {
+            print('Failed to fetch balance for ${network.name}: $e');
+            // Continue to next network even if one fails
+          }
+        }
+
+        // Format and remove trailing zeros
+        String formattedEth = totalBalanceEth.toStringAsFixed(6);
+        formattedEth = formattedEth.replaceAll(RegExp(r'0+$'), '');
+        formattedEth = formattedEth.replaceAll(RegExp(r'\.$'), '');
+        if (formattedEth.isEmpty || formattedEth == '.') {
+          formattedEth = '0.00';
+        }
+
+        _balance.value = formattedEth;
+
+        totalBalanceUsd = totalBalanceEth * ethPrice;
+        _balanceUsd.value = totalBalanceUsd.toStringAsFixed(2);
+
+        return;
+      }
+
+      // Single network logic
+      GetBalanceUseCase? useCase;
+      try {
+        useCase = Get.find<GetBalanceUseCase>();
+      } catch (e) {
+        useCase = _getBalanceUseCase;
+      }
+
       if (useCase != null) {
         // Query real balance from blockchain
         final balanceResult = await useCase.call(
           address: _currentAddress.value,
         );
-        
+
         _balance.value = balanceResult.balanceEth;
-        
+
         // TODO: Get USD price and calculate balanceUsd
         // For now, use placeholder
         final ethPrice = 2000.0; // Placeholder
@@ -299,8 +356,14 @@ class WalletController extends GetxController {
         _balance.value = '1.234';
         _balanceUsd.value = '2,468.00';
       }
-    } catch (e) {
-      _errorMessage.value = 'Failed to refresh balance';
+    } catch (e, st) {
+      print('WalletController.refreshBalance Error: $e\n$st');
+      _errorMessage.value = 'Failed to refresh balance: ${e.toString()}';
+      // Fallback to 0.00 so it doesn't get stuck at ...
+      _balance.value = '0.00';
+      _balanceUsd.value = '0.00';
+    } finally {
+      _isLoading.value = false;
     }
   }
 

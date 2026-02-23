@@ -113,6 +113,8 @@ class NetworkSelectorSheet extends StatelessWidget {
                   vertical: AppTheme.spacingM,
                 ),
                 children: [
+                  // ALL NETWORKS TILE
+                  _buildAllNetworksTile(context, currentNetwork, controller),
                   if (mainnets.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(
@@ -183,6 +185,113 @@ class NetworkSelectorSheet extends StatelessWidget {
           // Bottom padding for safe area
           SizedBox(height: MediaQuery.of(context).padding.bottom),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAllNetworksTile(
+    BuildContext context,
+    Network? currentNetwork,
+    NetworkController controller,
+  ) {
+    final isSelected = currentNetwork == null;
+    return InkWell(
+      onTap: () async {
+        final success = await controller.switchNetwork(null);
+        if (success && context.mounted) {
+          Navigator.pop(context);
+          Get.snackbar(
+            'Network Changed',
+            'Switched to All Networks',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: AppTheme.surfaceDark,
+            colorText: AppTheme.textPrimary,
+            icon: const Icon(Icons.check_circle, color: Colors.green),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingL,
+          vertical: AppTheme.spacingM,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryPurple.withValues(alpha: 0.1)
+              : Colors.transparent,
+          border: Border(
+            left: BorderSide(
+              color: isSelected ? AppTheme.primaryPurple : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: isSelected
+                    ? AppTheme.primaryGradient
+                    : LinearGradient(
+                        colors: [
+                          AppTheme.surfaceDark,
+                          AppTheme.surfaceDark.withValues(alpha: 0.8),
+                        ],
+                      ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected
+                      ? AppTheme.primaryPurple
+                      : AppTheme.textTertiary,
+                  width: 2,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.public,
+                  size: 20,
+                  color: isSelected
+                      ? AppTheme.textPrimary
+                      : AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppTheme.spacingM),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'All Networks',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w600,
+                      color: isSelected
+                          ? AppTheme.primaryPurple
+                          : AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Aggregated Balance & View',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle,
+                color: AppTheme.primaryPurple,
+                size: 24,
+              ),
+          ],
+        ),
       ),
     );
   }

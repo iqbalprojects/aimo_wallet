@@ -656,6 +656,7 @@ class SwapController extends GetxController {
       final signedTx = await signUseCase.call(
         transaction: evmTransaction,
         pin: pin,
+        permit2Eip712: quote.permit2Eip712,
       );
 
       // Broadcast transaction

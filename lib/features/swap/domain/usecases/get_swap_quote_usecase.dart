@@ -146,6 +146,7 @@ class GetSwapQuoteUseCase {
           ? BigInt.tryParse(model.minBuyAmount!)
           : null,
       estimatedPriceImpact: priceImpact,
+      permit2Eip712: model.permit2Eip712,
     );
   }
 }

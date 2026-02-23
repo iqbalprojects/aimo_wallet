@@ -22,6 +22,7 @@ dependencies:
     shared_preferences: ^2.3.3
     http: ^1.2.0
     flutter_dotenv: ^6.0.0
+    eth_sig_util: ^0.0.9
 
 dev_dependencies:
     flutter_test:

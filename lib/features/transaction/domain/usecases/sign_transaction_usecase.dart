@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:typed_data';
+import 'package:eth_sig_util/eth_sig_util.dart';
 import '../entities/transaction.dart';
 import '../services/transaction_signer.dart';
 import '../../../../core/vault/secure_vault.dart';
@@ -18,11 +20,11 @@ class SignTransactionException implements Exception {
 }
 
 /// Sign Transaction Use Case
-/// 
+///
 /// DOMAIN LAYER - Business Logic
-/// 
+///
 /// Coordinates transaction signing with security-first approach.
-/// 
+///
 /// Cryptographic Flow:
 /// 1. Check if wallet is unlocked (via AuthController)
 /// 2. Retrieve encrypted mnemonic from SecureVault using PIN
@@ -30,7 +32,7 @@ class SignTransactionException implements Exception {
 /// 4. Sign transaction using TransactionSigner (EIP-155)
 /// 5. Clear mnemonic and private key from memory
 /// 6. Return SignedTransaction
-/// 
+///
 /// Security Principles:
 /// - Wallet must be unlocked before signing
 /// - Private key derived at runtime only
@@ -39,7 +41,7 @@ class SignTransactionException implements Exception {
 /// - Private key cleared from memory after signing
 /// - EIP-155 prevents replay attacks
 /// - No automatic broadcast
-/// 
+///
 /// Usage:
 /// ```dart
 /// final useCase = SignTransactionUseCase(
@@ -48,12 +50,12 @@ class SignTransactionException implements Exception {
 ///   transactionSigner: transactionSigner,
 ///   authController: authController,
 /// );
-/// 
+///
 /// final signed = await useCase.call(
 ///   transaction: transaction,
 ///   pin: pin,
 /// );
-/// 
+///
 /// print('TX Hash: ${signed.transactionHash}');
 /// ```
 class SignTransactionUseCase {
@@ -65,25 +67,26 @@ class SignTransactionUseCase {
     required SecureVault secureVault,
     required WalletEngine walletEngine,
     required TransactionSigner transactionSigner,
-    AuthController? authController, // Kept for backward compatibility but not used
-  })  : _secureVault = secureVault,
-        _walletEngine = walletEngine,
-        _transactionSigner = transactionSigner;
+    AuthController?
+    authController, // Kept for backward compatibility but not used
+  }) : _secureVault = secureVault,
+       _walletEngine = walletEngine,
+       _transactionSigner = transactionSigner;
 
   /// Sign transaction
-  /// 
+  ///
   /// Parameters:
   /// - transaction: Transaction to sign
   /// - pin: User's PIN (for mnemonic decryption)
   /// - accountIndex: Account index (default: 0)
-  /// 
+  ///
   /// Returns: SignedTransaction with raw hex and hash
-  /// 
+  ///
   /// Throws:
   /// - SignTransactionException.walletLocked: If wallet is locked
   /// - SignTransactionException.invalidPin: If PIN is wrong
   /// - SignTransactionException.signingFailed: If signing fails
-  /// 
+  ///
   /// Security:
   /// - Checks wallet lock state before proceeding
   /// - Mnemonic retrieved only for signing
@@ -93,6 +96,7 @@ class SignTransactionUseCase {
     required EvmTransaction transaction,
     required String pin,
     int accountIndex = 0,
+    Map<String, dynamic>? permit2Eip712,
   }) async {
     String? mnemonic;
     Uint8List? privateKey;
@@ -122,12 +126,41 @@ class SignTransactionUseCase {
         );
       }
 
+      // Step 2.5: Sign Permit2 EIP-712 payload if provided
+      EvmTransaction txToSign = transaction;
+      if (permit2Eip712 != null) {
+        try {
+          final signature = EthSigUtil.signTypedData(
+            privateKeyInBytes: privateKey,
+            jsonData: jsonEncode(permit2Eip712),
+            version: TypedDataVersion.V4,
+          );
+
+          String txData = transaction.data ?? '0x';
+          if (!txData.startsWith('0x')) txData = '0x$txData';
+
+          String sigStr = signature.startsWith('0x')
+              ? signature.substring(2)
+              : signature;
+          int sigLen = sigStr.length ~/ 2;
+          String sigLenHex = sigLen.toRadixString(16).padLeft(64, '0');
+
+          txToSign = transaction.copyWith(data: '$txData$sigLenHex$sigStr');
+        } catch (e) {
+          throw SignTransactionException(
+            'Failed to sign Permit2 EIP-712 message',
+            details: e.toString(),
+          );
+        }
+      }
+
       // Step 3: Sign transaction with EIP-155
       try {
-        final signedTransaction = await _transactionSigner.signTransactionSecure(
-          transaction: transaction,
-          privateKey: privateKey,
-        );
+        final signedTransaction = await _transactionSigner
+            .signTransactionSecure(
+              transaction: txToSign,
+              privateKey: privateKey,
+            );
 
         return signedTransaction;
       } catch (e) {

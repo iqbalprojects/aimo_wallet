@@ -49,6 +49,9 @@ class SwapQuote {
   /// Null if not provided by API.
   final double? estimatedPriceImpact;
 
+  /// Permit2 EIP-712 data for off-chain signature
+  final Map<String, dynamic>? permit2Eip712;
+
   SwapQuote({
     required this.to,
     required this.data,
@@ -60,6 +63,7 @@ class SwapQuote {
     required this.sellAmount,
     BigInt? minBuyAmount,
     this.estimatedPriceImpact,
+    this.permit2Eip712,
   }) : minBuyAmount = minBuyAmount ?? buyAmount;
 
   /// Estimated total gas fee (gas * gasPrice).

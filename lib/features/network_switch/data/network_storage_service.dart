@@ -3,30 +3,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../presentation/controllers/network_controller.dart';
 
 /// Network Storage Service
-/// 
+///
 /// DATA LAYER - Local Storage
-/// 
+///
 /// Provides persistent storage for network configuration using SharedPreferences.
-/// 
+///
 /// Storage Keys:
 /// - 'current_network_id': ID of currently selected network
 /// - 'custom_networks': JSON array of custom networks
-/// 
+///
 /// Security:
 /// - Non-secure storage (SharedPreferences) is OK for network config
 /// - Network config is public information
 /// - Does NOT store private keys or sensitive data
-/// 
+///
 /// Usage:
 /// ```dart
 /// final storage = NetworkStorageService();
-/// 
+///
 /// // Save current network
 /// await storage.saveCurrentNetwork('ethereum-mainnet');
-/// 
+///
 /// // Load current network
 /// final networkId = await storage.getCurrentNetwork();
-/// 
+///
 /// // Save custom networks
 /// await storage.saveCustomNetworks(networks);
 /// ```
@@ -35,7 +35,7 @@ class NetworkStorageService {
   static const String _customNetworksKey = 'custom_networks';
 
   /// Save current network ID
-  /// 
+  ///
   /// Parameters:
   /// - networkId: ID of network to save as current
   Future<void> saveCurrentNetwork(String networkId) async {
@@ -44,38 +44,44 @@ class NetworkStorageService {
   }
 
   /// Get current network ID
-  /// 
+  ///
   /// Returns: Network ID or null if not set
   Future<String?> getCurrentNetwork() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_currentNetworkKey);
   }
 
+  /// Clear current network ID (e.g. for All Networks)
+  Future<void> clearCurrentNetwork() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_currentNetworkKey);
+  }
+
   /// Save custom networks
-  /// 
+  ///
   /// Parameters:
   /// - networks: List of custom networks to save
   Future<void> saveCustomNetworks(List<Network> networks) async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Convert networks to JSON
     final networksJson = networks.map((n) => _networkToJson(n)).toList();
     final jsonString = jsonEncode(networksJson);
-    
+
     await prefs.setString(_customNetworksKey, jsonString);
   }
 
   /// Load custom networks
-  /// 
+  ///
   /// Returns: List of custom networks or empty list if none saved
   Future<List<Network>> getCustomNetworks() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString(_customNetworksKey);
-    
+
     if (jsonString == null || jsonString.isEmpty) {
       return [];
     }
-    
+
     try {
       final List<dynamic> jsonList = jsonDecode(jsonString);
       return jsonList.map((json) => _networkFromJson(json)).toList();
@@ -86,7 +92,7 @@ class NetworkStorageService {
   }
 
   /// Clear all network storage
-  /// 
+  ///
   /// Useful for testing or reset functionality
   Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
