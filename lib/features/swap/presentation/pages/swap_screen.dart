@@ -336,7 +336,7 @@ class _SwapScreenState extends State<SwapScreen> {
         _quoteSecondsRemaining--;
         if (_quoteSecondsRemaining <= 0) {
           timer.cancel();
-          _swapController.reset();
+          _getQuote();
         }
       });
     });
@@ -1102,10 +1102,10 @@ class _SwapScreenState extends State<SwapScreen> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  'Quote expires in ${_quoteSecondsRemaining}s',
+                  'Refreshing in ${_quoteSecondsRemaining}s...',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: _quoteSecondsRemaining <= 10
-                        ? AppTheme.accentRed
+                        ? AppTheme.accentGreen
                         : AppTheme.textTertiary,
                   ),
                 ),
