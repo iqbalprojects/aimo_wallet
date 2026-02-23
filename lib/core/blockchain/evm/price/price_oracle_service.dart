@@ -14,10 +14,10 @@ class TokenPrice {
     required this.timestamp,
   });
 
-  /// Check if price is stale (older than 5 minutes)
-  bool get isStale {
+  /// Check if price is older than the given [timeout]
+  bool isExpired(Duration timeout) {
     final age = DateTime.now().difference(timestamp);
-    return age > const Duration(minutes: 5);
+    return age > timeout;
   }
 
   @override
@@ -95,8 +95,8 @@ class PriceOracleService {
   PriceOracleService({
     http.Client? httpClient,
     Duration cacheTimeout = const Duration(minutes: 5),
-  })  : _httpClient = httpClient ?? http.Client(),
-        _cacheTimeout = cacheTimeout;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _cacheTimeout = cacheTimeout;
 
   /// Get token price in USD
   ///
@@ -107,7 +107,7 @@ class PriceOracleService {
 
     // Check cache
     final cached = _priceCache[normalizedAddress];
-    if (cached != null && !cached.isStale) {
+    if (cached != null && !cached.isExpired(_cacheTimeout)) {
       return cached.priceUSD;
     }
 
@@ -143,7 +143,7 @@ class PriceOracleService {
       final normalizedAddress = address.toLowerCase();
       final cached = _priceCache[normalizedAddress];
 
-      if (cached != null && !cached.isStale) {
+      if (cached != null && !cached.isExpired(_cacheTimeout)) {
         prices[normalizedAddress] = cached.priceUSD;
       } else {
         addressesToFetch.add(normalizedAddress);
@@ -309,7 +309,7 @@ class PriceOracleService {
 
   /// Clear stale prices from cache
   void clearStaleCache() {
-    _priceCache.removeWhere((key, value) => value.isStale);
+    _priceCache.removeWhere((key, value) => value.isExpired(_cacheTimeout));
   }
 
   /// Get cache size
